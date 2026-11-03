@@ -166,6 +166,23 @@ async function marketById(env: Env, id: number): Promise<EdekaMarket | null> {
   return kvGet<EdekaMarket>(env, `edeka:m:${id}`);
 }
 
+/** Liegt die PLZ im Gebiet von ALDI Nord oder ALDI SÜD? (nach den nächsten Filialen laut OpenStreetMap) */
+async function aldiRegion(env: Env, plz: string): Promise<'nord' | 'sued' | 'unbekannt'> {
+  // Auch "unbekannt" einen Tag merken, damit eine gestörte Filialsuche nicht jede Anfrage bremst
+  return cached(env, `aldireg:${plz}`, 24 * HOUR, async () => {
+    try {
+      const c = await centerOf(env, plz).catch(() => null);
+      const stores = await cached(env, `stores:${plz}`, 7 * 24 * HOUR, () => nearestStores(plz, c));
+      const nord = stores.find((s) => s.chain === 'ALDI Nord')?.distanceKm ?? Infinity;
+      const sued = stores.find((s) => s.chain === 'ALDI SÜD')?.distanceKm ?? Infinity;
+      if (nord === Infinity && sued === Infinity) return 'unbekannt' as const;
+      return nord <= sued ? ('nord' as const) : ('sued' as const);
+    } catch {
+      return 'unbekannt' as const;
+    }
+  });
+}
+
 export async function getOffers(env: Env, plz: string, marketIds: number[] = [], force = false): Promise<OffersResponse> {
   const notes: string[] = [];
   const errors: string[] = [];
@@ -179,12 +196,14 @@ export async function getOffers(env: Env, plz: string, marketIds: number[] = [],
     }
   };
 
+  // ALDI Nord nur dort, wo es ALDI Nord gibt (im Süden stehen nur ALDI-SÜD-Filialen)
+  const region = await aldiRegion(env, plz);
   const [mg, aldi, nearby] = await Promise.all([
     settle('marktguru', cached(env, `mg:${plz}`, 6 * HOUR, async () => normalizeAll(await fetchRawOffers(plz)), force), {
       offers: [] as Offer[],
       chains: [] as ChainInfo[],
     }),
-    settle('ALDI Nord', cached(env, 'aldi:nord', 6 * HOUR, fetchAldiNord, force), [] as Offer[]),
+    region === 'sued' ? ([] as Offer[]) : settle('ALDI Nord', cached(env, 'aldi:nord', 6 * HOUR, fetchAldiNord, force), [] as Offer[]),
     settle('EDEKA-Marktsuche', nearbyMarkets(env, plz), [] as EdekaMarket[]),
   ]);
 
