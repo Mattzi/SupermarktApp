@@ -112,14 +112,14 @@ export function loadLastRecipes(): RecipesResponse | null {
 
 const OFFER_MAX_AGE = 1 * 3600_000;
 
-/** Fehler, wenn die Cloudflare-Anmeldung abgelaufen ist */
+/** Fehler, wenn die Anmeldung abgelaufen ist */
 export class LoginError extends Error {
   constructor() {
     super('Deine Anmeldung ist abgelaufen. Lade die App neu, um dich wieder anzumelden.');
   }
 }
 
-/** fetch für die eigene API: erkennt die Login-Seite von Cloudflare Access */
+/** fetch für die eigene API: erkennt die Weiterleitung zur Login-Seite von Authentik */
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
@@ -139,7 +139,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /**
- * EDEKA-Märkte direkt vom Gerät aus suchen (edeka.de blockt Anfragen aus der Cloud)
+ * EDEKA-Märkte direkt vom Gerät aus suchen (edeka.de blockt Anfragen aus Rechenzentren)
  * und beim Server anmelden, damit er Angebote und Prospekt des Markts findet.
  */
 export async function edekaNearbyFromDevice(plz: string): Promise<ChainInfo[]> {

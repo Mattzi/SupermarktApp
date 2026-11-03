@@ -5,9 +5,9 @@ import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { mergeDocs, type SyncDoc } from './worker/sync';
 
-// Versionskennung: Zeitpunkt des Builds + Git-Commit (bei Cloudflare aus WORKERS_CI_COMMIT_SHA)
+// Versionskennung: Zeitpunkt des Builds + Git-Commit (im Docker-Build aus GIT_SHA)
 function gitSha(): string {
-  const ci = process.env.WORKERS_CI_COMMIT_SHA;
+  const ci = process.env.GIT_SHA;
   if (ci) return ci.slice(0, 7);
   try {
     return execSync('git rev-parse --short HEAD').toString().trim();
@@ -68,7 +68,7 @@ function mockApi(): Plugin {
           res.setHeader('clear-site-data', '"cookies", "storage"');
           return send({ ok: true }, 0);
         }
-        if (req.url.startsWith('/api/health')) return send({ ok: true, hasKey: false, model: 'mock', monthCostUsd: 0.42, budgetUsd: 8, recipesToday: 2, recipesPerDay: 15 });
+        if (req.url.startsWith('/api/health')) return send({ ok: true, hasKey: false, model: 'mock', monthCostUsd: 0.42, budgetUsd: 8, userCostToday: 0.03, userBudgetUsd: 0.1 });
         if (req.url.startsWith('/api/deals')) {
           return send({ weeksOfHistory: 0, deals: [{ offerId: 1008, reasons: ['−45 % reduziert'], score: 50 }, { offerId: 1001, reasons: ['günstigster Hackfleisch-Preis diese Woche'], score: 30 }] });
         }
@@ -127,7 +127,7 @@ export default defineConfig({
         importScripts: ['push-sw.js'],
         clientsClaim: true,
         cleanupOutdatedCaches: true,
-        navigateFallbackDenylist: [/^\/api\//, /^\/cdn-cgi\//, /^\/version\.json/],
+        navigateFallbackDenylist: [/^\/api\//, /^\/relay\//, /^\/outpost\.goauthentik\.io\//, /^\/version\.json/],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.hostname === 'cdn.marktguru.de' || url.pathname.startsWith('/api/img'),
@@ -144,6 +144,6 @@ export default defineConfig({
     }),
   ],
   server: {
-    proxy: process.env.MOCK_API ? undefined : { '/api': 'http://localhost:8787' },
+    proxy: process.env.MOCK_API ? undefined : { '/api': 'http://localhost:8080' },
   },
 });

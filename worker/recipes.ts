@@ -1,9 +1,9 @@
-// Erzeugt Rezepte aus den aktuellen Angeboten mit der Claude API.
+// Erzeugt Rezepte aus den aktuellen Angeboten mit einem KI-Modell über OpenRouter.
 import type { Diet, Offer, Recipe, RecipeIngredient, RecipeRequest, RecipesResponse } from '../shared/types';
 import type { Env } from './index';
-import { costUsd as costUsd_, type Tracker, type Usage } from './costs';
+import type { Tracker } from './costs';
+import { askJson, costOf } from './ai';
 
-const DEFAULT_MODEL = 'claude-sonnet-5-5';
 const MAX_OFFERS = 650;
 
 const DIET_TEXT: Record<string, string> = {
@@ -320,38 +320,30 @@ export async function generateRecipes(req: RecipeRequest, allOffers: Offer[], en
   const ids = cartIds(r);
   const cart = ids.map((id) => allOffers.find((o) => o.id === id)).filter((o): o is Offer => !!o);
   const { system, user } = buildPrompt(r, offers, cart);
-  const model = r.fast ? env.FAST_MODEL || 'claude-haiku-5-5' : env.MODEL || DEFAULT_MODEL;
+  const model = (r.fast ? env.RECIPE_MODEL_FAST : '') || env.RECIPE_MODEL || '';
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': env.ANTHROPIC_API_KEY!,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 16000,
-      system,
-      messages: [{ role: 'user', content: user }],
-      output_config: { format: { type: 'json_schema', schema: TOOL.input_schema } },
-    }),
-  });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`Claude API Fehler ${res.status}: ${t.slice(0, 300)}`);
-  }
-  const data = (await res.json()) as { stop_reason?: string; usage?: Usage; content: { type: string; text?: string }[] };
-  await track?.(model, data.usage);
-  const costUsd = Math.round(costUsd_(model, data.usage) * 1000) / 1000;
-  if (data.stop_reason === 'max_tokens') throw new Error('Die Antwort der KI war zu lang und wurde abgeschnitten. Bitte nochmal versuchen.');
-  const text = data.content.find((c) => c.type === 'text')?.text ?? '';
   let raws: RawRecipe[] = [];
+  let costUsd = 0;
   try {
-    raws = (JSON.parse(text) as { recipes: RawRecipe[] }).recipes ?? [];
-  } catch {
-    throw new Error('Die Antwort der KI war kein gültiges JSON. Bitte nochmal versuchen.');
+    const res = await askJson<{ recipes: RawRecipe[] }>(
+      { apiKey: env.OPENROUTER_API_KEY ?? '', appUrl: env.APP_URL },
+      model,
+      [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      TOOL.input_schema,
+      16000,
+    );
+    costUsd = res.costUsd;
+    raws = res.data.recipes ?? [];
+  } catch (e) {
+    costUsd = costOf(e);
+    throw e;
+  } finally {
+    await track?.(costUsd);
   }
+  costUsd = Math.round(costUsd * 1000) / 1000;
   if (!raws.length) throw new Error('Die KI hat keine Rezepte geliefert. Bitte nochmal versuchen.');
 
   const byId = new Map(allOffers.map((o) => [o.id, o]));
@@ -362,6 +354,7 @@ export async function generateRecipes(req: RecipeRequest, allOffers: Offer[], en
   return {
     recipes,
     model,
+    fast: !!r.fast,
     offerCount: offers.length,
     createdAt: new Date().toISOString(),
     costUsd,

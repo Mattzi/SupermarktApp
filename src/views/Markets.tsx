@@ -6,8 +6,8 @@ import { AppInfo } from './AppInfo';
 interface Health {
   monthCostUsd: number;
   budgetUsd: number;
-  recipesToday: number;
-  recipesPerDay: number;
+  userCostToday: number;
+  userBudgetUsd: number;
 }
 
 /** Liste der Zutaten, die nie vorkommen sollen – einsehbar und änderbar */
@@ -61,8 +61,8 @@ export function ProspektInfo({ markets }: { markets: number[] }) {
     <section className="card status">
       <h2>Prospekte</h2>
       <p className="muted small">
-        Lidl, REWE, Penny, Netto, Kaufland und ALDI Nord kommen fertig als Daten – ohne KI. Nur die Prospekte einzelner EDEKA-Märkte liest
-        die KI, und zwar jeden Prospekt genau einmal.
+        Lidl, REWE, Penny, Netto, Kaufland, ALDI und viele EDEKA-Märkte kommen fertig als Daten – ohne KI. Nur wenn EDEKA für einen Markt
+        online bloß die bundesweiten Angebote kennt, liest die KI seinen Prospekt, und zwar jeden Prospekt genau einmal.
       </p>
       {!s && <p className="muted small">Lädt …</p>}
       {s?.markets.map((m) => (
@@ -106,7 +106,7 @@ export function CostInfo() {
         <span style={{ width: `${Math.min(100, (h.monthCostUsd / h.budgetUsd) * 100)}%` }} />
       </div>
       <p className="muted small">
-        Diesen Monat {fmt(h.monthCostUsd)} $ von {fmt(h.budgetUsd)} $ · heute {h.recipesToday} von {h.recipesPerDay} Rezeptanfragen
+        Dein Budget heute: {fmt(h.userCostToday)} $ von {fmt(h.userBudgetUsd)} $ · alle zusammen diesen Monat {fmt(h.monthCostUsd)} $ von {fmt(h.budgetUsd)} $
       </p>
     </section>
   );

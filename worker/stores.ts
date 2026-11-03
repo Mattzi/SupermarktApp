@@ -6,6 +6,7 @@ const UA = 'Angebotskueche/1.0 (private Einkaufs-App)';
 // OSM-Marke → Kettenname in der App
 const BRANDS: [RegExp, string][] = [
   [/^aldi nord$/i, 'ALDI Nord'],
+  [/^aldi s(ü|ue)d$/i, 'ALDI SÜD'],
   [/^rewe$/i, 'REWE'],
   [/^lidl$/i, 'Lidl'],
   [/^penny$/i, 'PENNY'],

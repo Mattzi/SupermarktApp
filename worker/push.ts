@@ -1,6 +1,8 @@
 // Web-Push ohne Nutzdaten: Der Server "klingelt" nur, der Service Worker holt den Text von /api/push/latest.
 // So braucht es keine Verschlüsselung der Nachricht – nur eine VAPID-Signatur (ES256).
 
+import type { Kv } from './kv';
+
 const b64url = (buf: ArrayBuffer | Uint8Array) => {
   const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
   let s = '';
@@ -14,7 +16,7 @@ interface StoredKeys {
 }
 
 /** VAPID-Schlüssel: einmal erzeugt und im KV gespeichert */
-export async function vapidKeys(kv: KVNamespace): Promise<StoredKeys> {
+export async function vapidKeys(kv: Kv): Promise<StoredKeys> {
   const existing = await kv.get<StoredKeys>('push:vapid', 'json');
   if (existing) return existing;
   const pair = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])) as CryptoKeyPair;
@@ -35,7 +37,7 @@ export interface PushSub {
 }
 
 /** Schickt einen leeren Push an ein Gerät. Gibt den HTTP-Status zurück (404/410 = Abo abgelaufen). */
-export async function sendPush(kv: KVNamespace, endpoint: string): Promise<number> {
+export async function sendPush(kv: Kv, endpoint: string): Promise<number> {
   const keys = await vapidKeys(kv);
   const key = await crypto.subtle.importKey('jwk', keys.privateJwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
   const aud = new URL(endpoint).origin;

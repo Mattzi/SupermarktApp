@@ -197,6 +197,8 @@ export interface Recipe {
 export interface RecipesResponse {
   recipes: Recipe[];
   model: string;
+  /** Mit dem Schnell-Modell erzeugt */
+  fast?: boolean;
   offerCount: number;
   createdAt?: string;
   /** Was diese Anfrage bei der KI gekostet hat (US-Dollar) */

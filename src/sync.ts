@@ -1,4 +1,4 @@
-// Abgleich zwischen Geräten über das Cloudflare-Konto.
+// Abgleich zwischen Geräten über das eigene Konto (Anmeldung über Authentik).
 // Jeder Bereich (Einstellungen, Korb, Einkaufsliste …) hat einen Änderungszeitpunkt; die neuere Fassung gewinnt.
 // Beim allerersten Abgleich eines Geräts wird zusammengeführt statt überschrieben, damit nichts verloren geht.
 

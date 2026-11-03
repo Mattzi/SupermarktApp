@@ -1,9 +1,12 @@
 // EDEKA-Märkte (inkl. nah & gut, NP, E center): Angebote gelten pro Markt.
 // Viele kleine Märkte haben online nur die bundesweiten Angebote; ihr Wochenprospekt
-// liegt als PDF im "Blätterkatalog". Den liest Claude einmal pro Woche aus (siehe extractProspekt).
+// liegt im "Blätterkatalog". Den liest ein KI-Modell einmal pro Woche aus (siehe extractProspekt),
+// sofern die EDEKA-App-Schnittstelle für den Markt nur die bundesweiten Angebote kennt (edeka-mobile.ts).
 import type { ChainInfo, Diet, Group, Offer } from '../shared/types';
 import { dietFor, guessGroup } from './aldi';
-import type { Tracker, Usage } from './costs';
+import type { Tracker } from './costs';
+import { askJson, costOf, type AiConfig, type Part } from './ai';
+import { IMAGE_UA } from './edeka-mobile';
 
 // edeka.de lässt nur Anfragen mit vollständigen Browser-Kopfzeilen durch
 const H = {
@@ -96,12 +99,12 @@ export async function fetchMarketOffers(m: EdekaMarket, now = Date.now()): Promi
 const COOKING = new Set<Group>(['fleisch', 'wurst', 'fisch', 'milch', 'gemuese', 'obst', 'vorrat', 'tiefkuehl', 'feinkost', 'brot']);
 
 
-function packFromText(t: string): string | undefined {
+export function packFromText(t: string): string | undefined {
   const m = t.match(/(\d+(?:[.,]\d+)?\s?x\s?)?\d+(?:[.,]\d+)?\s?(kg|g|ml|l)\b/i);
   return m ? m[0].replace(/\s+/g, ' ') : /stück/i.test(t) ? '1 Stück' : undefined;
 }
 
-function parseBasic(b?: string | null): { value: number; unit: string } | undefined {
+export function parseBasic(b?: string | null): { value: number; unit: string } | undefined {
   const m = b?.match(/1\s?(kg|l|stück)\s*=\s*€?\s*(\d+[.,]\d+)/i);
   return m ? { value: parseFloat(m[2].replace(',', '.')), unit: m[1].toLowerCase() } : undefined;
 }
@@ -125,18 +128,18 @@ export interface Prospekt {
 export async function findProspekte(m: EdekaMarket): Promise<Prospekt[]> {
   const res = await fetch(`https://www.edeka.de/maerkte/${m.marketNo}/prospekte/`, { headers: H });
   if (!res.ok) throw new Error(`EDEKA-Prospektseite antwortet mit ${res.status}`);
-  const html = await res.text();
-  const found = [...html.matchAll(/https:\/\/blaetterkatalog\.edeka\.de\/(preview\/)?([A-Z_]+)\/(\d+)\/index\.html/g)];
-  const out: Prospekt[] = [];
-  const seen = new Set<string>();
-  for (const f of found) {
-    const p = await catalogAt(f[2], f[3], !!f[1]);
-    if (p && !seen.has(p.key)) {
-      seen.add(p.key);
-      out.push(p);
-    }
-  }
-  return out;
+  return probeProspekte(catalogPathsFromHtml(await res.text()));
+}
+
+/** Blätterkatalog-Adressen (z. B. "MINDEN/8011165") aus der Prospektseite eines Markts */
+export function catalogPathsFromHtml(html: string): string[] {
+  const found = [...html.matchAll(/https:\/\/blaetterkatalog\.edeka\.de\/(?:preview\/)?([A-Z_]+)\/(\d+)\/index\.html/g)];
+  return [...new Set(found.map((f) => `${f[1]}/${f[2]}`))];
+}
+
+/** GLN des Markts aus seiner Seite auf edeka.de (steht dort in den Tracking-Daten) */
+export function glnFromHtml(html: string): string | null {
+  return html.match(/market_gln(?:&quot;|"|\\")\s*:\s*(?:&quot;|"|\\")(\d{13})/)?.[1] ?? null;
 }
 
 /** Ein Blätterkatalog unter fester Adresse (z. B. MINDEN/8011165), aktuell oder Vorschau */
@@ -238,52 +241,50 @@ interface RawProspektOffer {
   box: { x: number; y: number; w: number; h: number };
 }
 
-/** Lässt Claude den PDF-Prospekt lesen und gibt die Lebensmittel-Angebote zurück */
-export async function extractProspekt(m: EdekaMarket, p: Prospekt, apiKey: string, model: string, track?: Tracker): Promise<Offer[]> {
-  const call = async (source: Record<string, unknown>) =>
-    fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model,
-        max_tokens: 32000,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'document', source },
-              {
-                type: 'text',
-                text: [
-                  `Das ist der Wochenprospekt von „${m.name}“ (${m.street}, ${m.city}).`,
-                  'Lies jede Seite und liste ALLE Lebensmittel- und Getränke-Angebote mit Preis auf.',
-                  'Nicht aufnehmen: Haushalt, Drogerie, Tierbedarf, Deko, Gutscheine, Rätsel, reine Werbung ohne Preis.',
-                  'Preis = der groß gedruckte Aktionspreis in Euro (z. B. "-.99" = 0.99). Pfand nicht einrechnen.',
-                  'Bei "versch. Sorten" das Produkt einmal aufnehmen und die Sorten kurz in description nennen.',
-                  'Wenn ein Preis nur mit App/Karte gilt, das in description vermerken.',
-                  'Gib für jedes Angebot die Seite (page) und möglichst genau den Bereich (box) an, in dem Produktfoto und Preisschild stehen – als Anteile von 0 bis 1 (z. B. x=0.5 heißt Seitenmitte), NICHT in Prozent oder Pixeln.',
-                ].join('\n'),
-              },
-            ],
-          },
-        ],
-        output_config: { format: { type: 'json_schema', schema: SCHEMA } },
-      }),
-    });
+/** Seiten pro KI-Aufruf: kleinere Häppchen sind zuverlässiger und sprengen die Antwortlänge nicht */
+const PAGES_PER_CALL = 4;
 
-  let res = await call({ type: 'url', url: p.pdfUrl });
-  if (!res.ok && res.status === 400) {
-    // Falls Anthropic die URL nicht laden kann: PDF selbst holen und mitschicken
-    const pdf = await fetch(p.pdfUrl, { headers: H });
-    if (!pdf.ok) throw new Error(`Prospekt-PDF antwortet mit ${pdf.status}`);
-    const b64 = arrayBufferToBase64(await pdf.arrayBuffer());
-    res = await call({ type: 'base64', media_type: 'application/pdf', data: b64 });
+async function pageImage(p: Prospekt, page: number): Promise<string> {
+  const res = await fetch(`${p.base}/large/bk_${page}.jpg`, { headers: { ...H, referer: 'https://blaetterkatalog.edeka.de/' } });
+  if (!res.ok) throw new Error(`Prospektseite ${page} antwortet mit ${res.status}`);
+  return `data:${res.headers.get('content-type') ?? 'image/jpeg'};base64,${arrayBufferToBase64(await res.arrayBuffer())}`;
+}
+
+/** Lässt ein KI-Modell die Seiten des Prospekts lesen und gibt die Lebensmittel-Angebote zurück */
+export async function extractProspekt(m: EdekaMarket, p: Prospekt, ai: AiConfig, model: string, track?: Tracker): Promise<Offer[]> {
+  if (!p.pageCount) throw new Error('Prospekt ohne Seiten');
+  const raws: RawProspektOffer[] = [];
+  for (let start = 1; start <= p.pageCount; start += PAGES_PER_CALL) {
+    const pages = Array.from({ length: Math.min(PAGES_PER_CALL, p.pageCount - start + 1) }, (_, i) => start + i);
+    const content: Part[] = [
+      {
+        type: 'text',
+        text: [
+          `Das sind Seiten ${pages[0]}–${pages[pages.length - 1]} aus dem Wochenprospekt von „${m.name}“ (${m.street}, ${m.city}).`,
+          'Lies jede Seite und liste ALLE Lebensmittel- und Getränke-Angebote mit Preis auf.',
+          'Nicht aufnehmen: Haushalt, Drogerie, Tierbedarf, Deko, Gutscheine, Rätsel, reine Werbung ohne Preis.',
+          'Preis = der groß gedruckte Aktionspreis in Euro (z. B. "-.99" = 0.99). Pfand nicht einrechnen.',
+          'Bei "versch. Sorten" das Produkt einmal aufnehmen und die Sorten kurz in description nennen.',
+          'Wenn ein Preis nur mit App/Karte gilt, das in description vermerken.',
+          'page = die Seitennummer, die vor dem jeweiligen Bild steht.',
+          'box = Bereich auf diesem Seitenbild, in dem Produktfoto und Preisschild stehen – als Anteile von 0 bis 1 (x=0.5 heißt Bildmitte), NICHT in Prozent oder Pixeln. x,y = linke obere Ecke.',
+          'Wenn auf diesen Seiten keine Lebensmittel-Angebote stehen, gib eine leere Liste zurück.',
+        ].join('\n'),
+      },
+    ];
+    for (const n of pages) content.push({ type: 'text', text: `Seite ${n}:` }, { type: 'image_url', image_url: { url: await pageImage(p, n) } });
+    let cost = 0;
+    try {
+      const res = await askJson<{ offers: RawProspektOffer[] }>(ai, model, [{ role: 'user', content }], SCHEMA, 16000);
+      cost = res.costUsd;
+      raws.push(...(res.data.offers ?? []).filter((o) => pages.includes(o.page)));
+    } catch (e) {
+      cost = costOf(e);
+      throw e;
+    } finally {
+      await track?.(cost);
+    }
   }
-  if (!res.ok) throw new Error(`Claude API Fehler ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  const data = (await res.json()) as { stop_reason?: string; usage?: Usage; content: { type: string; text?: string }[] };
-  await track?.(model, data.usage);
-  const text = data.content.find((c) => c.type === 'text')?.text ?? '';
-  const raws = (JSON.parse(text) as { offers: RawProspektOffer[] }).offers ?? [];
   return raws
     .filter((o) => o.name && typeof o.price === 'number' && o.price > 0)
     .map((o, i) => ({
@@ -366,16 +367,24 @@ export function withCurrentImages(offers: Offer[], p: Pick<Prospekt, 'key' | 'pr
   });
 }
 
-/** Lädt ein Bild von EDEKA mit passendem Referer */
+/** Lädt ein Bild von EDEKA mit passendem Referer (Blätterkatalog) bzw. App-Kennung (Bilder der App-Schnittstelle) */
 export async function proxyImage(u: string): Promise<Response> {
-  const url = new URL(u);
-  if (!['blaetterkatalog.edeka.de', 'offer-images.api.edeka'].includes(url.hostname)) {
+  let url: URL;
+  try {
+    url = new URL(u);
+  } catch {
+    return new Response('ungültige Adresse', { status: 400 });
+  }
+  const app = url.hostname.endsWith('.api.edeka');
+  if (url.protocol !== 'https:' || (url.hostname !== 'blaetterkatalog.edeka.de' && !app)) {
     return new Response('nicht erlaubt', { status: 400 });
   }
-  // Kein Zwischenspeicher auf Cloudflare-Seite: unter derselben EDEKA-Adresse liegt jede Woche eine andere Seite
-  const res = await fetch(url.toString(), { headers: { ...H, referer: 'https://blaetterkatalog.edeka.de/' }, cache: 'no-store' });
+  const headers = app ? { 'user-agent': IMAGE_UA } : { ...H, referer: 'https://blaetterkatalog.edeka.de/' };
+  const res = await fetch(url.toString(), { headers, cache: 'no-store' });
   if (!res.ok) return new Response('nicht gefunden', { status: res.status });
+  const type = res.headers.get('content-type') ?? 'image/jpeg';
+  if (!type.startsWith('image/')) return new Response('kein Bild', { status: 502 });
   return new Response(res.body, {
-    headers: { 'content-type': res.headers.get('content-type') ?? 'image/jpeg', 'cache-control': 'public, max-age=604800, immutable' },
+    headers: { 'content-type': type, 'cache-control': 'public, max-age=604800, immutable' },
   });
 }

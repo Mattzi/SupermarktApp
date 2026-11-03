@@ -1,0 +1,10 @@
+# EDEKA-Relay für zu Hause (Raspberry Pi, NAS, PC – überall, wo Docker läuft).
+# Start:  RELAY_TOKEN=… docker compose up -d --build
+services:
+  relay:
+    build: .
+    restart: unless-stopped
+    environment:
+      SERVER_URL: ${SERVER_URL:-https://app.mattis-kraemer.de}
+      RELAY_TOKEN: ${RELAY_TOKEN:?RELAY_TOKEN fehlt}
+      INTERVAL_S: ${INTERVAL_S:-60}

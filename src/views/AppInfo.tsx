@@ -7,7 +7,7 @@ const current: Build = __BUILD__;
 const fmt = (b: Build) =>
   `${new Date(b.builtAt).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${b.sha}`;
 
-/** Abgleich zwischen Handy und PC über das Cloudflare-Konto */
+/** Abgleich zwischen Handy und PC über das eigene Konto */
 export function SyncInfo() {
   const [s, setS] = useState<SyncStatus>(syncStatus);
   useEffect(() => {
@@ -21,7 +21,7 @@ export function SyncInfo() {
       <h2>Abgleich zwischen Geräten</h2>
       <p className="muted small">
         Märkte, Einstellungen, „Mag ich nicht“, Rezepte, gespeicherte Rezepte, Korb, Einkaufsliste und Merkliste sind auf allen Geräten gleich, auf
-        denen du mit deinem Cloudflare-Konto angemeldet bist.
+        denen du mit deinem Konto angemeldet bist.
       </p>
       {s.state === 'ok' && (
         <p className="note">
@@ -135,14 +135,14 @@ export function AppInfo() {
               <strong>✓ Gelöscht:</strong> {cleared.join(', ')}. Deine Merkliste ist geblieben. Alles, was in deinem Konto abgeglichen ist, kommt beim Neustart zurück.
             </p>
             <p className="small muted">
-              Beim Neustart meldet Cloudflare dich meist automatisch wieder an, weil es sich den Login auf seiner eigenen Seite merkt. Willst du
+              Beim Neustart meldet die Anmeldeseite dich meist automatisch wieder an, weil sie sich den Login merkt. Willst du
               dich komplett abmelden, nimm „Abmelden“.
             </p>
             <div className="app-actions">
               <button className="primary small-btn" onClick={() => location.replace('/')}>
                 App neu starten
               </button>
-              <a className="secondary small-btn" href="/cdn-cgi/access/logout">
+              <a className="secondary small-btn" href="/outpost.goauthentik.io/sign_out">
                 Abmelden
               </a>
             </div>

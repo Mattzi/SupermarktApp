@@ -241,7 +241,7 @@ export function CookView(p: Props) {
         </button>
         {gen.loading && (
           <p className="loading-note" role="status">
-            Claude sucht die passenden Angebote und rechnet die Preise aus. Das dauert {s.fast ? 'etwa 10–20' : 'meist 30–70'} Sekunden. ({elapsed} s)
+            Die KI sucht die passenden Angebote und rechnet die Preise aus. Das dauert {s.fast ? 'etwa 10–20' : 'meist 30–70'} Sekunden. ({elapsed} s)
           </p>
         )}
         {p.activeChains.length === 0 && <p className="warn">Wähle oben mindestens einen Markt aus.</p>}
@@ -263,7 +263,7 @@ export function CookView(p: Props) {
           {p.results.costUsd != null && (
             <p className="muted small pad cost-line">
               Diese Rezepte haben {p.results.costUsd.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 3 })} $ gekostet
-              {p.results.model?.includes('haiku') ? ' (Schnell-Modus)' : ''}
+              {p.results.fast ? ' (Schnell-Modus)' : ''}
             </p>
           )}
           {allExpired && <p className="warn pad">Die Angebote dieser Rezepte sind abgelaufen. Bau neue Rezepte für die aktuellen Angebote.</p>}

@@ -50,3 +50,60 @@ const d1 = computeDealsFrom(cur, hist);
 eq(d1.deals.find((d) => d.offerId === 2)?.reasons, ['20 % günstiger als sonst'], 'guenstiger als sonst');
 eq(d1.deals.find((d) => d.offerId === 3)?.reasons, ['seit 4 Wochen nicht im Angebot'], 'selten');
 eq(isoWeek(new Date('2026-10-16T12:00:00Z')), '2026-W42', 'kw');
+
+// EDEKA: GLN und Blätterkatalog aus den Seiten von edeka.de, Relay, App-Schnittstelle
+import { glnFromHtml, catalogPathsFromHtml } from '../worker/edeka';
+import { berlin, fetchMobileOffers } from '../worker/edeka-mobile';
+import { completeJob, leaseJobs, requestMarketData, getGln, katKey } from '../worker/relay';
+import { memoryKv } from '../worker/kv';
+const marktSeite = 'data-tracking-event="[&quot;select_market&quot;,{&quot;market_name&quot;:&quot;nah &amp; gut von EDEKA Durasin&quot;,&quot;market_gln&quot;:&quot;4313590115808&quot;}]"';
+eq(glnFromHtml(marktSeite), '4313590115808', 'gln aus marktseite');
+eq(glnFromHtml('{"market_gln":"4314021182307"}'), '4314021182307', 'gln aus json');
+eq(glnFromHtml('<html>nichts</html>'), null, 'keine gln');
+eq(
+  catalogPathsFromHtml('<a href="https://blaetterkatalog.edeka.de/MINDEN/8011165/index.html"> <a href="https://blaetterkatalog.edeka.de/preview/MINDEN/8011165/index.html">'),
+  ['MINDEN/8011165'],
+  'blaetterkatalog pfade',
+);
+eq(berlin('2026-11-07', '23:59:59'), '2026-11-07T23:59:59+01:00', 'winterzeit');
+eq(berlin('2026-07-01', '00:00:00'), '2026-07-01T00:00:00+02:00', 'sommerzeit');
+
+void (async () => {
+  const kv = memoryKv();
+  await requestMarketData(kv, '801116');
+  await requestMarketData(kv, '801116');
+  const jobs = await leaseJobs(kv);
+  eq(jobs.map((j) => j.url), ['https://www.edeka.de/maerkte/801116/', 'https://www.edeka.de/maerkte/801116/prospekte/'], 'relay auftraege');
+  eq((await leaseJobs(kv)).length, 0, 'relay reserviert');
+  await completeJob(kv, 'markt-801116', 200, marktSeite);
+  await completeJob(kv, 'prospekte-801116', 200, 'https://blaetterkatalog.edeka.de/MINDEN/8011165/index.html');
+  eq([await getGln(kv, '801116'), await kv.get(katKey('801116'), 'json')], ['4313590115808', ['MINDEN/8011165']], 'relay ergebnisse');
+  await requestMarketData(kv, '801116');
+  eq((await leaseJobs(kv)).length, 0, 'relay nichts mehr offen');
+
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (u: string) => {
+    const url = String(u);
+    if (url.includes('openid-connect/token')) return new Response(JSON.stringify({ access_token: 't', expires_in: 360 }));
+    return new Response(
+      JSON.stringify({
+        national: false,
+        totalCount: 3,
+        validFrom: '2026-11-02',
+        validTill: '2026-11-07',
+        offers: [
+          { id: 1, title: 'Ab Donnerstag erhältlich: Blumenkohl', descriptions: ['aus Deutschland', 'Stück'], price: { value: '1,99' }, category: { name: 'Obst & Gemüse' } },
+          { id: 2, title: 'Rinder-Hackfleisch', descriptions: ['500 g (1 kg = 9,98)'], price: { value: '4,99' }, category: { name: 'Fleisch & Wurst' } },
+          { id: 3, title: 'Spülmittel', descriptions: [], price: { value: '0,99' }, category: { name: 'Drogerie' } },
+        ],
+      }),
+    );
+  }) as typeof fetch;
+  const m = { id: 1, marketNo: '801116', name: 'nah & gut Durasin', street: '', city: '', channel: 'EDEKA' };
+  const r = await fetchMobileOffers({ EDEKA_APP_CLIENT_ID: 'a', EDEKA_APP_CLIENT_SECRET: 'b' }, m, '4313590115808', Date.parse('2026-11-03T12:00:00Z'));
+  globalThis.fetch = realFetch;
+  eq(r.national, false, 'mobil national');
+  eq(r.offers.map((o) => [o.name, o.price, o.group, o.pack ?? null, o.refPrice ?? null]), [['Blumenkohl', 1.99, 'gemuese', '1 Stück', null], ['Rinder-Hackfleisch', 4.99, 'fleisch', '500 g', 9.98]], 'mobil angebote');
+  eq(r.offers[0].desc, 'Ab Donnerstag erhältlich · aus Deutschland · Stück', 'mobil verfuegbarkeit');
+  eq(r.offers[0].validTo, '2026-11-07T23:59:59+01:00', 'mobil gueltig bis');
+})();

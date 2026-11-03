@@ -1,0 +1,36 @@
+{
+	email {$ACME_EMAIL}
+}
+
+# Authentik (Anmeldung, Nutzerverwaltung)
+{$AUTH_DOMAIN} {
+	reverse_proxy authentik-server:9000
+}
+
+# Die App – nur für angemeldete, freigegebene Nutzer
+{$APP_DOMAIN} {
+	# Login-Kopfzeilen dürfen nur von Authentik kommen, nie vom Browser
+	request_header -X-Authentik-Username
+	request_header -X-Authentik-Groups
+	request_header -X-Authentik-Email
+	request_header -X-Authentik-Name
+	request_header -X-Authentik-Uid
+	request_header -X-Ki-Budget-Tag
+
+	# EDEKA-Relay von zu Hause: ohne Authentik, dafür mit eigenem Schlüssel (RELAY_TOKEN)
+	handle /relay/* {
+		reverse_proxy app:8080
+	}
+
+	handle {
+		route {
+			reverse_proxy /outpost.goauthentik.io/* authentik-server:9000
+			forward_auth authentik-server:9000 {
+				uri /outpost.goauthentik.io/auth/caddy
+				copy_headers X-Authentik-Username X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid X-Ki-Budget-Tag
+				trusted_proxies private_ranges
+			}
+			reverse_proxy app:8080
+		}
+	}
+}

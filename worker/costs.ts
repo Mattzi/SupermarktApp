@@ -1,35 +1,25 @@
-// Kosten der Claude-Aufrufe mitzählen und ein Monatsbudget einhalten.
-// Preise in US-Dollar pro 1 Mio. Tokens (Eingabe, Ausgabe), Stand Oktober 2026.
-const PRICES: Record<string, [number, number]> = {
-  'claude-sonnet-5-5': [2, 10],
-  'claude-haiku-5-5': [0.1, 0.5],
-};
-
-export interface Usage {
-  input_tokens?: number;
-  output_tokens?: number;
-  cache_creation_input_tokens?: number;
-  cache_read_input_tokens?: number;
-}
-
-export function costUsd(model: string, u: Usage | undefined): number {
-  if (!u) return 0;
-  const [inp, out] = PRICES[model] ?? PRICES['claude-sonnet-5-5'];
-  const input = (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) * 1.25 + (u.cache_read_input_tokens ?? 0) * 0.1;
-  return (input * inp + (u.output_tokens ?? 0) * out) / 1_000_000;
-}
+// Kosten der KI-Aufrufe mitzählen: gesamt pro Monat (Notbremse) und je Konto pro Tag.
+// Die Kosten liefert OpenRouter bei jeder Antwort mit (usage.cost, in US-Dollar).
+import type { Kv } from './kv';
 
 const monthKey = () => `cost:${new Date().toISOString().slice(0, 7)}`;
+const dayKey = (user: string) => `cost:u:${user}:${new Date().toISOString().slice(0, 10)}`;
 
-export async function monthCost(kv: KVNamespace | undefined): Promise<number> {
+export async function monthCost(kv: Kv | undefined): Promise<number> {
   if (!kv) return 0;
   return Number((await kv.get(monthKey())) ?? 0);
 }
 
-export async function addCost(kv: KVNamespace | undefined, usd: number): Promise<void> {
-  if (!kv || !usd) return;
-  const now = await monthCost(kv);
-  await kv.put(monthKey(), (now + usd).toFixed(4), { expirationTtl: 70 * 86400 });
+/** Heutige Kosten eines Kontos (user = gehashte Kennung, siehe auth.ts) */
+export async function dayCost(kv: Kv | undefined, user: string): Promise<number> {
+  if (!kv) return 0;
+  return Number((await kv.get(dayKey(user))) ?? 0);
 }
 
-export type Tracker = (model: string, usage: Usage | undefined) => Promise<void>;
+export async function addCost(kv: Kv | undefined, usd: number, user?: string): Promise<void> {
+  if (!kv || !usd) return;
+  await kv.put(monthKey(), ((await monthCost(kv)) + usd).toFixed(5), { expirationTtl: 70 * 86400 });
+  if (user) await kv.put(dayKey(user), ((await dayCost(kv, user)) + usd).toFixed(5), { expirationTtl: 3 * 86400 });
+}
+
+export type Tracker = (usd: number) => Promise<void>;

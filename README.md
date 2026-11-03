@@ -2,12 +2,14 @@
 
 Rezepte aus den aktuellen Supermarkt-Angeboten, sortiert nach Preis pro Portion.
 
-- **App:** React + Vite als PWA (`src/`), später als APK über Capacitor
-- **Backend:** Cloudflare Worker (`worker/`) unter `/api/*`
-  - `GET /api/offers?plz=38536` – Lebensmittel-Angebote (Quelle: marktguru, inoffiziell)
-  - `POST /api/recipes` – Rezepte über die Claude API
-  - `GET /api/health` – prüft, ob der API-Key gesetzt ist
+- **App:** React + Vite als PWA (`src/`)
+- **Server:** Node (`worker/server.ts`) mit der API unter `/api/*`, Daten in Postgres, Anmeldung über Authentik
+  - `GET /api/offers?plz=38536&markets=…` – Lebensmittel-Angebote (marktguru, ALDI, EDEKA-App-Schnittstelle bzw. EDEKA-Prospekt per KI)
+  - `POST /api/recipes` – Rezepte über OpenRouter
+  - `GET /api/health` – Einstellungen und KI-Kosten
+  - `/relay/*` – Aufträge für das EDEKA-Relay zu Hause (`relay/`)
 - **Gemeinsame Typen:** `shared/types.ts`
+- **Betrieb:** Docker Compose mit Caddy, Authentik und Postgres, siehe [`deploy/README.md`](deploy/README.md)
 
 ## Entwickeln
 
@@ -18,11 +20,9 @@ npm test                   # Tests für die Angebots-Aufbereitung
 npm run typecheck
 ```
 
-Mit echtem Backend lokal: `.dev.vars` mit `ANTHROPIC_API_KEY=...` anlegen, dann `npm run build && npx wrangler dev`.
+Mit echtem Backend lokal (ohne Anmeldung, Daten nur im Arbeitsspeicher, ohne `DATABASE_URL`):
 
-## Veröffentlichen
-
-Cloudflare Workers Builds ist mit diesem Repo verbunden: jeder Push auf `main` baut (`npm run build`) und veröffentlicht (`npx wrangler deploy`) automatisch.
-
-Secret in Cloudflare: **Workers & Pages → supermarkt-app → Settings → Variables and Secrets → `ANTHROPIC_API_KEY`** (Typ *Secret*).
-Das Modell steht in `wrangler.jsonc` unter `vars.MODEL`.
+```bash
+OPENROUTER_API_KEY=… RECIPE_MODEL=deepseek/deepseek-v4.1-flash npm run dev:api
+npm run dev                # zweites Terminal, leitet /api an Port 8080 weiter
+```

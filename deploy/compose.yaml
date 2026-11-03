@@ -1,0 +1,103 @@
+# Angebotsküche auf dem eigenen Server: App + Authentik (Login) + Postgres + Caddy (HTTPS).
+# Start (im Ordner deploy/):  cp .env.example .env  → ausfüllen →  docker compose up -d --build
+name: angebotskueche
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN fehlt in .env}
+      AUTH_DOMAIN: ${AUTH_DOMAIN:?AUTH_DOMAIN fehlt in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL fehlt in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/data:/data
+      - ./caddy/config:/config
+    depends_on:
+      - app
+      - authentik-server
+
+  app:
+    build:
+      context: ..
+      args:
+        GIT_SHA: ${GIT_SHA:-lokal}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://angebotskueche:${APP_DB_PASSWORD:?APP_DB_PASSWORD fehlt in .env}@postgresql:5432/angebotskueche
+      APP_URL: https://${APP_DOMAIN}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      RECIPE_MODEL: ${RECIPE_MODEL}
+      RECIPE_MODEL_FAST: ${RECIPE_MODEL_FAST:-}
+      EXTRACT_MODEL: ${EXTRACT_MODEL:-}
+      MONTHLY_BUDGET_USD: ${MONTHLY_BUDGET_USD:-8}
+      DAILY_USER_BUDGET_USD: ${DAILY_USER_BUDGET_USD:-0.10}
+      EXTRACT_PER_WEEK: ${EXTRACT_PER_WEEK:-4}
+      RELAY_TOKEN: ${RELAY_TOKEN:?RELAY_TOKEN fehlt in .env}
+      EDEKA_APP_CLIENT_ID: ${EDEKA_APP_CLIENT_ID:-}
+      EDEKA_APP_CLIENT_SECRET: ${EDEKA_APP_CLIENT_SECRET:-}
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    # Kein Port nach außen: Die App ist nur über Caddy erreichbar (sonst ließen sich Login-Kopfzeilen fälschen)
+
+  postgresql:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: authentik
+      POSTGRES_USER: authentik
+      POSTGRES_PASSWORD: ${AUTHENTIK_DB_PASSWORD:?AUTHENTIK_DB_PASSWORD fehlt in .env}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+    volumes:
+      - ./postgres:/var/lib/postgresql/data
+      # Legt beim allerersten Start die Datenbank der App an
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d authentik -U authentik"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2026.8.3}
+    restart: unless-stopped
+    command: server
+    environment: &authentik-env
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?AUTHENTIK_SECRET_KEY fehlt in .env}
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_DB_PASSWORD}
+      AUTHENTIK_EMAIL__HOST: ${SMTP_HOST:-}
+      AUTHENTIK_EMAIL__PORT: ${SMTP_PORT:-587}
+      AUTHENTIK_EMAIL__USERNAME: ${SMTP_USER:-}
+      AUTHENTIK_EMAIL__PASSWORD: ${SMTP_PASSWORD:-}
+      AUTHENTIK_EMAIL__USE_TLS: ${SMTP_USE_TLS:-true}
+      AUTHENTIK_EMAIL__USE_SSL: ${SMTP_USE_SSL:-false}
+      AUTHENTIK_EMAIL__FROM: ${SMTP_FROM:-}
+    volumes:
+      - ./authentik/data:/data
+      - ./authentik/templates:/templates
+    depends_on:
+      postgresql:
+        condition: service_healthy
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2026.8.3}
+    restart: unless-stopped
+    command: worker
+    environment: *authentik-env
+    volumes:
+      - ./authentik/data:/data
+      - ./authentik/certs:/certs
+      - ./authentik/templates:/templates
+    depends_on:
+      postgresql:
+        condition: service_healthy
