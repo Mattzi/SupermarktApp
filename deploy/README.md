@@ -5,7 +5,7 @@ Davor sitzt **Cloudflare** als DNS-Proxy (orange Wolke): Die Besucher sehen nur 
 Dazu kommt ein kleines **Relay** an einem privaten Internetanschluss, weil www.edeka.de Rechenzentren blockt.
 
 ```
-Browser ──HTTPS──▶ Cloudflare ──HTTPS (Origin-Zertifikat)──▶ Caddy ──forward_auth──▶ Authentik
+Browser ──HTTPS──▶ Cloudflare ──HTTPS (Let's Encrypt)──▶ Caddy ──forward_auth──▶ Authentik
                      │
                      └──▶ App (Node) ──▶ Postgres
                             │  ├──▶ EDEKA-App-Schnittstelle, Blätterkatalog, marktguru, ALDI, OpenStreetMap
@@ -19,11 +19,12 @@ Relay zu Hause ──/relay/*──┘   (holt Seiten von www.edeka.de: GLN und 
 1. **DNS** (Zone `mattis-kraemer.de`): `app` und `auth` als A-Eintrag (und AAAA, falls der Server IPv6 hat) auf die Hetzner-IP, beide **mit oranger Wolke** (Proxied).
 2. **SSL/TLS → Overview:** Modus **Full (strict)**.
 3. **SSL/TLS → Edge Certificates:** „Always Use HTTPS“ an. „Minimum TLS Version“ 1.2.
-4. **SSL/TLS → Origin Server → Create Certificate:**
-   - Hostnamen: `mattis-kraemer.de` und `*.mattis-kraemer.de`, Gültigkeit 15 Jahre, Format PEM.
-   - Das Zertifikat auf dem Server als `deploy/certs/origin.pem` speichern, den privaten Schlüssel als `deploy/certs/origin.key`. Der Schlüssel wird nur einmal angezeigt.
-   - Dieses Zertifikat gilt nur zwischen Cloudflare und dem Server, Browser kennen es nicht. Deshalb funktioniert die Seite nur mit oranger Wolke.
-   - `chmod 644 certs/origin.pem certs/origin.key` (Caddy läuft im Container und muss beide lesen können). Den Ordner `certs/` sonst niemandem zugänglich machen.
+4. **API-Token für die Zertifikate** (My Profile → API Tokens → Create Token → *Custom token*):
+   - Berechtigungen: **Zone → Zone → Read** und **Zone → DNS → Edit**
+   - Zone Resources: *Include → Specific zone → mattis-kraemer.de*
+   - Den Token als `CF_API_TOKEN` in die `.env`. Damit legt Caddy für die Let's-Encrypt-Prüfung (DNS-01) kurz einen TXT-Eintrag `_acme-challenge` an und löscht ihn wieder.
+   - Caddy holt so ein echtes, öffentlich gültiges Zertifikat und erneuert es selbst. Das passt zu **Full (strict)** und funktioniert auch, falls du die orange Wolke mal ausschaltest.
+   - Port 80 muss dafür nicht offen sein.
 5. **Relay nicht ausbremsen:** Das Relay ist ein Programm, kein Browser. Cloudflares Bot-Schutz könnte es mit einer Prüfseite aufhalten.
    - **Security → Bots:** „Bot Fight Mode“ **aus**. Im Gratis-Tarif lässt er sich nicht auf einzelne Pfade beschränken.
    - **Security → WAF → Custom rules → Create rule:** Name `Relay`, Bedingung *URI Path* *starts with* `/relay/`, Aktion **Skip** → alle übrigen Custom Rules, Rate Limiting, „Browser Integrity Check“. Den Schutz übernimmt der `RELAY_TOKEN`.
@@ -50,16 +51,16 @@ Wenn ein langsames Modell öfter darüber liegt, für `RECIPE_MODEL` ein schnell
    ```bash
    openssl rand -base64 36 | tr -d '\n'
    ```
-   Pflicht: `AUTHENTIK_DB_PASSWORD`, `APP_DB_PASSWORD`, `AUTHENTIK_SECRET_KEY`, `RELAY_TOKEN`, `OPENROUTER_API_KEY`, `RECIPE_MODEL`, SMTP-Daten.
-3. Origin-Zertifikat liegt in `certs/` (siehe Abschnitt 1, Schritt 4).
-4. Starten:
+   Pflicht: `ACME_EMAIL`, `CF_API_TOKEN`, `AUTHENTIK_DB_PASSWORD`, `APP_DB_PASSWORD`, `AUTHENTIK_SECRET_KEY`, `RELAY_TOKEN`, `OPENROUTER_API_KEY`, `RECIPE_MODEL`, SMTP-Daten.
+3. Starten:
    ```bash
    docker compose up -d --build
    ```
+   Caddy wird dabei mit dem Cloudflare-DNS-Modul gebaut (`caddy-build/Dockerfile`), das dauert beim ersten Mal ein paar Minuten.
    Beim allerersten Start legt Postgres zusätzlich die Datenbank `angebotskueche` an (`initdb/10-app-db.sh`).
    **Wichtig:** Das passiert nur, wenn `deploy/postgres/` noch leer ist.
-5. Prüfen: `https://auth.mattis-kraemer.de` zeigt Authentik, `https://app.mattis-kraemer.de` leitet zur Anmeldung um.
-   Bei Fehler **526** passt das Zertifikat nicht (Datei, Hostname). Bei **521/522** ist Caddy nicht erreichbar (Firewall, Container läuft nicht: `docker compose logs caddy`).
+4. Prüfen: `https://auth.mattis-kraemer.de` zeigt Authentik, `https://app.mattis-kraemer.de` leitet zur Anmeldung um.
+   Bei Fehler **526** hat Caddy noch kein gültiges Zertifikat: `docker compose logs caddy` zeigt, ob die DNS-Prüfung klappt (häufig: Token ohne DNS-Edit-Recht oder für die falsche Zone). Bei **521/522** ist Caddy nicht erreichbar (Firewall, Container läuft nicht: `docker compose logs caddy`).
 
 Updates der App: `git pull`, dann `docker compose up -d --build app`.
 

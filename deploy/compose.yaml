@@ -1,10 +1,11 @@
 # Angebotsküche auf dem eigenen Server hinter Cloudflare: App + Authentik (Login) + Postgres + Caddy (HTTPS).
-# Start (im Ordner deploy/):  cp .env.example .env  → ausfüllen →  Origin-Zertifikat nach certs/  →  docker compose up -d --build
+# Start (im Ordner deploy/):  cp .env.example .env  → ausfüllen →  docker compose up -d --build
 name: angebotskueche
 
 services:
   caddy:
-    image: caddy:2.10-alpine
+    # Eigener Build mit Cloudflare-DNS-Modul (Zertifikate per DNS-01, siehe caddy-build/Dockerfile)
+    build: ./caddy-build
     restart: unless-stopped
     # Nur HTTPS. Cloudflare spricht den Server über 443 an; in der Hetzner-Firewall nur Cloudflare-IPs zulassen
     ports:
@@ -12,10 +13,10 @@ services:
     environment:
       APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN fehlt in .env}
       AUTH_DOMAIN: ${AUTH_DOMAIN:?AUTH_DOMAIN fehlt in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL fehlt in .env}
+      CF_API_TOKEN: ${CF_API_TOKEN:?CF_API_TOKEN fehlt in .env}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      # Cloudflare Origin Certificate (origin.pem + origin.key), siehe README
-      - ./certs:/certs:ro
       - ./caddy/data:/data
       - ./caddy/config:/config
     depends_on:

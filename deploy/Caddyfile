@@ -1,6 +1,8 @@
 {
-	# Zertifikate kommen von Cloudflare (Origin Certificate), Caddy holt selbst keine
-	auto_https disable_certs
+	email {$ACME_EMAIL}
+	# Let's-Encrypt-Zertifikate per DNS-01: Caddy legt den Prüf-Eintrag selbst bei Cloudflare an.
+	# Klappt mit oranger Wolke und ohne offenen Port 80.
+	acme_dns cloudflare {env.CF_API_TOKEN}
 
 	servers {
 		# Anfragen kommen über Cloudflare. Nur dessen Adressen dürfen die echte Besucher-IP mitteilen
@@ -13,14 +15,11 @@
 
 # Authentik (Anmeldung, Nutzerverwaltung)
 {$AUTH_DOMAIN} {
-	tls /certs/origin.pem /certs/origin.key
 	reverse_proxy authentik-server:9000
 }
 
 # Die App – nur für angemeldete, freigegebene Nutzer
 {$APP_DOMAIN} {
-	tls /certs/origin.pem /certs/origin.key
-
 	# Login-Kopfzeilen dürfen nur von Authentik kommen, nie vom Browser
 	request_header -X-Authentik-Username
 	request_header -X-Authentik-Groups
