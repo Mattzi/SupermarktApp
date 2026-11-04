@@ -8,3 +8,4 @@ deploy/.env
 deploy/postgres
 deploy/caddy
 deploy/authentik
+deploy/certs
