@@ -106,7 +106,7 @@ function categoryGroup(cat: string): Group | null | undefined {
 }
 
 /** Keine Lebensmittel (kommen in der Obst-&-Gemüse-Kategorie der App vor) */
-const NON_FOOD = /(weihnachtsstern|christrose|amaryllis|handbund|nordmann|nobilis|tanne\b|blume|strauß|orchidee|pflanze|adventskranz|gesteck|kerze|primel|hyazinthe|tulpe)/i;
+const NON_FOOD = /(weihnachtsstern|christrose|amaryllis|handbund|nordmann|nobilis|tannenbaum|tannenzweig|tanne\b|blumen(?!kohl)|blume\b|strauß|orchidee|\bpflanze\b|topfpflanze|zimmerpflanze|adventskranz|gesteck|kerze|primel|hyazinthe|tulpe)/i;
 /** Essbar, aber keine Zutat für Rezepte: Eis, Fertiggerichte, Süßes zum Frühstück, Getränkepulver … */
 const NOT_COOKING = /(ice cream|eiscreme|eis\b|cremissimo|pizza|fertiggericht|fertig|schlemmerfilet|fischstäbchen|nesquik|müsli|cerealien|konfitüre|marmelade|nuss-nougat|nutella|brotaufstrich|popits|snack|dessert|mousse|pudding|buldak|meal to go|rosinen schnecke|soßenkuchen)/i;
 
