@@ -24,6 +24,7 @@ export function km(aLat: number, aLon: number, bLat: number, bLon: number): numb
 export async function geocode(plz: string): Promise<{ lat: number; lon: number } | null> {
   const geo = await fetch(`https://nominatim.openstreetmap.org/search?postalcode=${plz}&country=de&format=json&limit=1`, {
     headers: { 'user-agent': UA, 'accept-language': 'de' },
+    signal: AbortSignal.timeout(15_000),
   });
   if (!geo.ok) throw new Error(`Ortssuche antwortet mit ${geo.status}`);
   const [place] = (await geo.json()) as { lat: string; lon: string }[];
@@ -43,26 +44,30 @@ export async function nearestStores(plz: string, center?: { lat: number; lon: nu
     'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
     'https://overpass.private.coffee/api/interpreter',
   ];
-  let res: Response | null = null;
+  // Alle gleichzeitig fragen, die erste brauchbare Antwort gewinnt (2026-11-18 hingen drei von vier
+  // Servern vom Cluster aus minutenlang ohne Antwort – nacheinander und ohne Zeitgrenze lud die App endlos)
   const tried: string[] = [];
-  for (const url of servers) {
+  const stop = new AbortController();
+  const ask = async (url: string): Promise<Response> => {
     try {
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'user-agent': UA, 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
         body: `data=${encodeURIComponent(q)}`,
+        signal: AbortSignal.any([stop.signal, AbortSignal.timeout(30_000)]),
       });
-      if (r.ok && (r.headers.get('content-type') ?? '').includes('json')) {
-        res = r;
-        break;
-      }
+      if (r.ok && (r.headers.get('content-type') ?? '').includes('json')) return r;
       tried.push(`${new URL(url).hostname}: ${r.status}`);
     } catch (e) {
-      tried.push(`${new URL(url).hostname}: ${String(e)}`);
+      tried.push(`${new URL(url).hostname}: ${e instanceof Error ? e.name : String(e)}`);
     }
-  }
-  if (!res) throw new Error(`Filialsuche nicht erreichbar (${tried.join(', ')})`);
+    throw new Error(url);
+  };
+  const res = await Promise.any(servers.map(ask)).catch(() => {
+    throw new Error(`Filialsuche nicht erreichbar (${tried.join(', ')})`);
+  });
   const d = (await res.json()) as { elements: { lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }[] };
+  stop.abort(); // langsamere Server nicht weiter warten lassen
 
   const best = new Map<string, StoreInfo>();
   for (const e of d.elements) {
