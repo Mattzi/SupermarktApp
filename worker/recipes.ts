@@ -157,7 +157,7 @@ const TOOL = {
   },
 } as const;
 
-function buildPrompt(req: RecipeRequest, offers: Offer[], cart: Offer[]): { system: string; user: string } {
+function buildPrompt(req: RecipeRequest, offers: Offer[], cart: Offer[], count = 5, hint?: string): { system: string; user: string } {
   const servings = req.persons * req.days;
   const system = [
     'Du bist ein kreativer, praktischer Hobbykoch-Assistent für eine Spar-Rezepte-App in Deutschland.',
@@ -186,7 +186,8 @@ function buildPrompt(req: RecipeRequest, offers: Offer[], cart: Offer[]): { syst
     lines.push('Alle Angebote stammen aus einem Markt. Nutze möglichst viele davon.');
   }
 
-  if (!req.replace) lines.push(`Erstelle 5 Rezepte.`);
+  if (!req.replace) lines.push(`Erstelle ${count} Rezepte.`);
+  if (hint) lines.push(hint);
   lines.push(`Ernährung: ${DIET_TEXT[req.diet] ?? DIET_TEXT.alles}`);
   lines.push(
     req.days > 1
@@ -352,6 +353,15 @@ export function priceRecipe(raw: RawRecipe, byId: Map<number, Offer>, servings: 
   };
 }
 
+const MAX_ATTEMPTS = 3;
+
+/** Wie viele Zutaten (ohne Grundvorrat) stammen aus echten Angeboten? Ein brauchbares Rezept hat mindestens 2 und mindestens die Hälfte. */
+export function offerCoverage(r: Recipe): { withOffer: number; total: number; usable: boolean } {
+  const real = r.ingredients.filter((i) => !i.pantry);
+  const withOffer = real.filter((i) => i.offer).length;
+  return { withOffer, total: real.length, usable: withOffer >= 2 && withOffer * 2 >= real.length };
+}
+
 export async function generateRecipes(req: RecipeRequest, allOffers: Offer[], env: Env, track?: Tracker): Promise<RecipesResponse> {
   const persons = Math.min(Math.max(1, Math.round(req.persons || 1)), 6);
   const days = Math.min(Math.max(1, Math.round(req.days || 1)), 7);
@@ -360,40 +370,69 @@ export async function generateRecipes(req: RecipeRequest, allOffers: Offer[], en
   if (!offers.length) throw new Error('Für diese Auswahl gibt es gerade keine passenden Angebote.');
   const ids = cartIds(r);
   const cart = ids.map((id) => allOffers.find((o) => o.id === id)).filter((o): o is Offer => !!o);
-  const { system, user } = buildPrompt(r, offers, cart);
   // Schnell-Modus nur, wenn ein eigenes Modell dafür gesetzt ist (sonst wäre es dasselbe Modell)
   const fast = !!r.fast && !!env.RECIPE_MODEL_FAST;
   const model = (fast ? env.RECIPE_MODEL_FAST : '') || env.RECIPE_MODEL || '';
-
-  let raws: RawRecipe[] = [];
-  let costUsd = 0;
-  try {
-    const res = await askJson<{ recipes: RawRecipe[] }>(
-      { apiKey: env.OPENROUTER_API_KEY ?? '', appUrl: env.APP_URL },
-      model,
-      [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-      TOOL.input_schema,
-      100000,
-      'low',
-    );
-    costUsd = res.costUsd;
-    raws = res.data.recipes ?? [];
-  } catch (e) {
-    costUsd = costOf(e);
-    throw e;
-  } finally {
-    await track?.(costUsd);
-  }
-  costUsd = Math.round(costUsd * 1000) / 1000;
-  if (!raws.length) throw new Error('Die KI hat keine Rezepte geliefert. Bitte nochmal versuchen.');
-
   const byId = new Map(allOffers.map((o) => [o.id, o]));
   const servings = persons * days;
   const cartFound = cart.map((o) => o.id);
-  const recipes = raws.map((x, i) => priceRecipe(x, byId, servings, i, cartFound)).sort((a, b) => a.perPortion - b.perPortion);
+  const wanted = r.replace ? 1 : 5;
+
+  // Die KI liefert manchmal Rezepte ohne (oder fast ohne) Angebote. Die prüfen wir hier und fordern Ersatz an,
+  // bevor etwas beim Nutzer ankommt.
+  let costUsd = 0;
+  let good: Recipe[] = [];
+  let lastProblem = '';
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS && good.length < wanted; attempt++) {
+    const missing = wanted - good.length;
+    const hint =
+      attempt > 1
+        ? `WICHTIG: Beim letzten Versuch hatten Rezepte kaum Angebote. Jedes Rezept muss seine Hauptzutaten aus der Angebotsliste nehmen (offerId setzen, mindestens die Hälfte aller Zutaten ohne Grundvorrat). Diese Titel gibt es schon, nicht wiederholen: ${good.map((x) => x.title).join('; ') || '–'}.`
+        : undefined;
+    const { system, user } = buildPrompt(r, offers, cart, missing, hint);
+    let attemptCost = 0;
+    let raws: RawRecipe[] = [];
+    try {
+      const res = await askJson<{ recipes: RawRecipe[] }>(
+        { apiKey: env.OPENROUTER_API_KEY ?? '', appUrl: env.APP_URL },
+        model,
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        TOOL.input_schema,
+        100000,
+        'low',
+      );
+      attemptCost = res.costUsd;
+      raws = res.data.recipes ?? [];
+    } catch (e) {
+      attemptCost = costOf(e);
+      costUsd += attemptCost;
+      await track?.(attemptCost);
+      if (good.length) break; // schon brauchbare Rezepte da – lieber diese liefern als alles verwerfen
+      throw e;
+    }
+    costUsd += attemptCost;
+    await track?.(attemptCost);
+    if (!raws.length) {
+      lastProblem = 'Die KI hat keine Rezepte geliefert.';
+      continue;
+    }
+    const priced = raws.map((x, i) => priceRecipe(x, byId, servings, good.length + i, cartFound));
+    for (const rec of priced) {
+      const c = offerCoverage(rec);
+      if (c.usable && !good.some((g) => g.title === rec.title)) good.push(rec);
+      else if (!c.usable) {
+        lastProblem = `Die KI hat Rezepte ohne Angebote geliefert.`;
+        console.warn(`Rezept "${rec.title}" verworfen (Versuch ${attempt}): ${c.withOffer} von ${c.total} Zutaten mit Angebot`);
+      }
+    }
+  }
+  costUsd = Math.round(costUsd * 1000) / 1000;
+  if (!good.length) throw Object.assign(new Error(`${lastProblem || 'Die KI hat keine Rezepte geliefert.'} Bitte nochmal versuchen.`), { costUsd });
+
+  const recipes = good.sort((a, b) => a.perPortion - b.perPortion);
   const used = new Set(recipes.flatMap((x) => x.usesCart ?? []));
   return {
     recipes,

@@ -9,7 +9,7 @@
     "build:server": "esbuild worker/server.ts worker/compare.ts --bundle --platform=node --format=esm --target=node22 --outdir=dist-server --out-extension:.js=.mjs --packages=external --log-level=warning",
     "start": "node dist-server/server.mjs",
     "typecheck": "tsc -p tsconfig.json && tsc -p worker/tsconfig.json",
-    "test": "esbuild test/normalize.test.ts --bundle --platform=node --log-level=warning | node && esbuild test/jobs.test.ts --bundle --platform=node --log-level=warning | node"
+    "test": "esbuild test/normalize.test.ts --bundle --platform=node --log-level=warning | node && esbuild test/jobs.test.ts --bundle --platform=node --log-level=warning | node && esbuild test/retry.test.ts --bundle --platform=node --log-level=warning | node"
   },
   "dependencies": {
     "postgres": "3.4.8",
