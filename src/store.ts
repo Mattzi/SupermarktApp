@@ -19,6 +19,8 @@ export interface Settings {
   combos: { name: string; chains: string[] }[];
   /** Schneller, günstiger Rezept-Modus */
   fast: boolean;
+  /** Pro Rezept nur ein Laden (aus: Märkte werden gemischt) */
+  singleStore?: boolean;
 }
 
 /** Vorübergehende Auswahl unterwegs */

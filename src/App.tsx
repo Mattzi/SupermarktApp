@@ -214,6 +214,7 @@ export default function App() {
         wishes,
         dislikes: settings.dislikes ?? [],
         fast: settings.fast,
+        singleStore: activeChains.length > 1 ? !!settings.singleStore : undefined,
         replace: replaceId ? { avoidTitles: (results?.recipes ?? []).map((r) => r.title) } : undefined,
         replaceId,
       };

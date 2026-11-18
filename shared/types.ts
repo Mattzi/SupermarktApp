@@ -137,6 +137,8 @@ export interface RecipeRequest {
   dislikes?: string[];
   /** Schneller, günstiger Modus (kleineres Modell) */
   fast?: boolean;
+  /** Jedes Rezept nur mit Angeboten aus EINEM Markt (sonst werden gewählte Märkte frei gemischt) */
+  singleStore?: boolean;
   /** Nur 1 Rezept als Ersatz bauen; diese Titel nicht wiederholen */
   replace?: { avoidTitles: string[] };
   /** ID des Rezepts, das durch das Ergebnis ersetzt wird (nur für die App, damit Aufträge später richtig einsortiert werden) */

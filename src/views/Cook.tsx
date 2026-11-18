@@ -245,6 +245,15 @@ export function CookView(p: Props) {
             </span>
           </label>
         )}
+        {p.activeChains.length > 1 && (
+          <label className="switch-row">
+            <input type="checkbox" checked={!!s.singleStore} onChange={(e) => set({ singleStore: e.target.checked })} />
+            <span>
+              <strong>Pro Rezept nur ein Laden</strong>
+              <span className="muted small"> · aus: Angebote aus allen gewählten Märkten werden gemischt (mehr Angebote je Rezept). An: jedes Rezept nur aus einem Markt, dafür weniger Wege.</span>
+            </span>
+          </label>
+        )}
         {(s.dislikes?.length ?? 0) > 0 && <p className="muted small dislike-note">Ohne: {s.dislikes.join(', ')}</p>}
 
         <button className="primary big" onClick={p.onGenerate} disabled={gen.loading || p.activeChains.length === 0}>

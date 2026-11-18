@@ -176,11 +176,16 @@ function buildPrompt(req: RecipeRequest, offers: Offer[], cart: Offer[]): { syst
 
   const lines: string[] = [];
   const stores = [...new Set(offers.map((o) => o.chain))];
-  lines.push(
-    stores.length > 1
-      ? `Der Nutzer kauft bewusst in diesen Märkten ein und kombiniert sie: ${stores.join(', ')}. Hole pro Rezept die besten Angebote aus ALLEN diesen Märkten und mische sie frei – ein Rezept soll, wo es passt, Angebote aus mindestens zwei Märkten nutzen. Wichtigstes Ziel: möglichst viele Zutaten kommen aus Angeboten. Nur bei gleichwertigen Angeboten nimm denselben Markt.`
-      : 'Alle Angebote stammen aus einem Markt. Nutze möglichst viele davon.',
-  );
+  if (stores.length > 1 && req.singleStore) {
+    lines.push(`Der Nutzer will pro Rezept nur in EINEN Laden: Jedes Rezept nutzt Angebote aus genau einem dieser Märkte (${stores.join(', ')}); die Rezepte dürfen auf verschiedene Märkte verteilt sein.`);
+  } else if (stores.length > 1) {
+    lines.push(
+      `Der Nutzer kauft bewusst in diesen Märkten ein und kombiniert sie: ${stores.join(', ')}. Hole pro Rezept die besten Angebote aus ALLEN diesen Märkten und mische sie frei – ein Rezept soll, wo es passt, Angebote aus mindestens zwei Märkten nutzen. Wichtigstes Ziel: möglichst viele Zutaten kommen aus Angeboten. Nur bei gleichwertigen Angeboten nimm denselben Markt.`,
+    );
+  } else {
+    lines.push('Alle Angebote stammen aus einem Markt. Nutze möglichst viele davon.');
+  }
+
   if (!req.replace) lines.push(`Erstelle 5 Rezepte.`);
   lines.push(`Ernährung: ${DIET_TEXT[req.diet] ?? DIET_TEXT.alles}`);
   lines.push(
