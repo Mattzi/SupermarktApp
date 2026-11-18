@@ -197,7 +197,8 @@ const SCHEMA = {
         properties: {
           name: { type: 'string', description: 'Produktname ohne Marke, z. B. "Rinder-Hackfleisch"' },
           brand: { type: 'string', description: 'Marke oder leerer String' },
-          price: { type: 'number', description: 'Angebotspreis in Euro' },
+          price: { type: 'number', description: 'Angebotspreis in Euro für EIN Stück/eine Packung, ohne App, ohne PAYBACK' },
+          appPrice: { type: ['number', 'null'], description: 'Günstigerer Preis, der nur mit der EDEKA-App gilt ("APP-PREIS"), sonst null' },
           oldPrice: { type: ['number', 'null'], description: 'Durchgestrichener/Statt-Preis, sonst null' },
           pack: { type: 'string', description: 'Packungsgröße, z. B. "500 g", "1 kg", "6 x 1,5 l", "1 Stück"; leer wenn unbekannt' },
           description: { type: 'string', description: 'Kurzer Zusatz (Sorte, Herkunft, Hinweise wie "mit App", "nur an der Theke")' },
@@ -219,7 +220,7 @@ const SCHEMA = {
             additionalProperties: false,
           },
         },
-        required: ['name', 'brand', 'price', 'oldPrice', 'pack', 'description', 'group', 'diet', 'cooking', 'page', 'box'],
+        required: ['name', 'brand', 'price', 'appPrice', 'oldPrice', 'pack', 'description', 'group', 'diet', 'cooking', 'page', 'box'],
         additionalProperties: false,
       },
     },
@@ -232,6 +233,7 @@ interface RawProspektOffer {
   name: string;
   brand: string;
   price: number;
+  appPrice: number | null;
   oldPrice: number | null;
   pack: string;
   description: string;
@@ -264,9 +266,12 @@ export async function extractProspekt(m: EdekaMarket, p: Prospekt, ai: AiConfig,
           `Das sind Seiten ${pages[0]}–${pages[pages.length - 1]} aus dem Wochenprospekt von „${m.name}“ (${m.street}, ${m.city}).`,
           'Lies jede Seite und liste ALLE Lebensmittel- und Getränke-Angebote mit Preis auf.',
           'Nicht aufnehmen: Haushalt, Drogerie, Tierbedarf, Deko, Gutscheine, Rätsel, reine Werbung ohne Preis.',
-          'Preis = der groß gedruckte Aktionspreis in Euro (z. B. "-.99" = 0.99). Pfand nicht einrechnen.',
+          'price = der groß gedruckte Aktionspreis in Euro für EIN Stück bzw. eine Packung (z. B. "-.99" = 0.99). Pfand nicht einrechnen.',
+          'Steht zusätzlich ein "APP-PREIS" (meist blaues Schild), gehört der normale Preis in price und der App-Preis in appPrice. Sonst appPrice = null.',
+          'PAYBACK-/Extra-Punkte (z. B. "30 Extra°Punkte = € 0.30") sind KEIN Preis. Dann ist price der angegebene Regalpreis ("Ø Regalpreis: 1.99"); in description "PAYBACK: 30 Extra-Punkte" vermerken.',
+          'Mengenangebote wie "3 kaufen für 1,79 €": price = der Einzelpreis (falls angegeben, z. B. "Einzelpreis 0,89"), sonst Gesamtpreis geteilt durch die Stückzahl; das Mengenangebot in description vermerken.',
+          'Der Grundpreis (z. B. "1kg = 4,98") ist nie der Angebotspreis.',
           'Bei "versch. Sorten" das Produkt einmal aufnehmen und die Sorten kurz in description nennen.',
-          'Wenn ein Preis nur mit App/Karte gilt, das in description vermerken.',
           'page = die Seitennummer, die vor dem jeweiligen Bild steht.',
           'box = Bereich auf diesem Seitenbild, in dem Produktfoto und Preisschild stehen – als Anteile von 0 bis 1 (x=0.5 heißt Bildmitte), NICHT in Prozent oder Pixeln. x,y = linke obere Ecke.',
           'Wenn auf diesen Seiten keine Lebensmittel-Angebote stehen, gib eine leere Liste zurück.',
@@ -295,6 +300,11 @@ export async function extractProspekt(m: EdekaMarket, p: Prospekt, ai: AiConfig,
       brand: o.brand || undefined,
       desc: o.description,
       price: o.price,
+      appPrice: typeof o.appPrice === 'number' && o.appPrice > 0 && o.appPrice < o.price ? o.appPrice : undefined,
+      dealNote:
+        typeof o.appPrice === 'number' && o.appPrice > 0 && o.appPrice < o.price
+          ? `mit EDEKA-App ${o.appPrice.toLocaleString('de-DE', { minimumFractionDigits: 2 })} €`
+          : undefined,
       oldPrice: o.oldPrice ?? undefined,
       pack: o.pack || undefined,
       group: GROUPS.includes(o.group) ? o.group : 'vorrat',

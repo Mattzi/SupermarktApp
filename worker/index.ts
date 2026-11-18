@@ -400,7 +400,7 @@ async function getLeaflets(env: Env, plz: string, marketIds: number[]): Promise<
 
 // Versionskennung des Einlese-Formats. Wird sie erhöht, liest der Cron alle aktuellen Prospekte neu ein
 // (v2: mit Bildausschnitten). Bis dahin bleiben die alten Daten sichtbar.
-const EXTRACT_VERSION = 'v2';
+const EXTRACT_VERSION = 'v3'; // v3: App-Preis, PAYBACK, Mengenangebote im Prompt
 const pdfKey = (k: string) => `edeka:pdf:${EXTRACT_VERSION}:${k}`;
 const errKey = (k: string) => `edeka:err:${EXTRACT_VERSION}:${k}`;
 const metaKey = (k: string) => `edeka:meta:${EXTRACT_VERSION}:${k}`;
