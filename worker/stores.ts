@@ -14,6 +14,9 @@ const BRANDS: [RegExp, string][] = [
   [/^kaufland$/i, 'Kaufland'],
 ];
 
+/** Ketten, für die die Filialsuche die nächste Filiale kennt */
+export const STORE_CHAINS = BRANDS.map(([, chain]) => chain);
+
 export function km(aLat: number, aLon: number, bLat: number, bLon: number): number {
   const r = (d: number) => (d * Math.PI) / 180;
   const h = Math.sin(r(bLat - aLat) / 2) ** 2 + Math.cos(r(aLat)) * Math.cos(r(bLat)) * Math.sin(r(bLon - aLon) / 2) ** 2;

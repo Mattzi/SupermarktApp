@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ChainInfo, ProspektStatus, StoreInfo } from '../../shared/types';
 import { api, edekaNearbyFromDevice, fetchOffers, type Settings, type Trip } from '../store';
 import { AppInfo } from './AppInfo';
+import { STORE_CHAINS } from '../../worker/stores';
 
 interface Health {
   monthCostUsd: number;
@@ -185,12 +186,23 @@ function ChainPicker(props: {
   const [pickedMarkets, setPickedMarkets] = useState<number[]>(props.selectedMarkets);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Nächste Filialen für die gerade gesuchte PLZ (kommen nach den Angeboten, die Suche wartet nicht darauf)
+  const [found, setFound] = useState<{ plz: string; stores: StoreInfo[] | null } | null>(null);
   const valid = /^\d{5}$/.test(plz);
+
+  function loadStores(forPlz: string) {
+    if (found?.plz === forPlz && found.stores) return;
+    setFound({ plz: forPlz, stores: null });
+    api<{ stores: StoreInfo[] }>(`/api/stores?plz=${forPlz}`)
+      .then((d) => setFound((f) => (f?.plz === forPlz ? { plz: forPlz, stores: d.stores } : f)))
+      .catch(() => setFound((f) => (f?.plz === forPlz ? null : f))); // ohne Ergebnis: einfach keine Angabe
+  }
 
   async function load() {
     if (!valid) return;
     setLoading(true);
     setError(null);
+    loadStores(plz);
     try {
       // Gewählte Märkte mitschicken, damit sie in der Liste bleiben
       const own = plz === props.initialPlz ? props.selectedMarkets : [];
@@ -217,10 +229,14 @@ function ChainPicker(props: {
     }
   }
 
-  // Nächste Filiale bei Ketten (nur für die Heimat-PLZ bekannt)
+  // Nächste Filiale bei Ketten: für die gesuchte PLZ, sonst die bekannte Liste der Heimat-PLZ
+  const current = found?.plz === plz ? found.stores : null;
   const store = (chain: string) => {
-    const st = props.stores?.find((x) => x.chain === chain);
-    return st?.address ? `nächste: ${st.address} · ${st.distanceKm.toLocaleString("de-DE")} km` : undefined;
+    const list = current ?? (plz === props.initialPlz ? props.stores : undefined);
+    const st = list?.find((x) => x.chain === chain);
+    if (st) return `nächste: ${st.address || st.name} · ${st.distanceKm.toLocaleString('de-DE')} km`;
+    if (current && STORE_CHAINS.includes(chain)) return 'keine Filiale im Umkreis von 12 km gefunden';
+    return undefined;
   };
 
   const toggle = (c: ChainInfo) => {
@@ -285,6 +301,7 @@ function ChainPicker(props: {
           {chains.length > 0 && (
             <>
               <h3 className="picker-head">Ketten in der Region</h3>
+              {found?.plz === plz && !found.stores && <p className="muted small">Suche die nächsten Filialen …</p>}
               <ul className="chain-list">{chains.map(option)}</ul>
             </>
           )}

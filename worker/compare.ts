@@ -2,6 +2,9 @@
 // Aufruf (im Container):
 //   docker compose run --rm app node dist-server/compare.mjs MINDEN/8011165 deepseek/deepseek-v4.1-flash google/gemini-… > vergleich.html
 // Braucht OPENROUTER_API_KEY. Ergebnis: eine HTML-Datei zum Öffnen im Browser.
+// Das ERSTE Modell gilt als Referenz: für die anderen wird gezählt, wie viele seiner Angebote sie auch finden
+// (gleiche Seite, gleicher Preis) und wie viele ihrer Angebote die Referenz bestätigt.
+// COMPARE_JSON=<datei> schreibt die Rohdaten zusätzlich als JSON.
 import { extractProspekt, probeProspekte, type EdekaMarket } from './edeka';
 import type { Offer } from '../shared/types';
 
@@ -42,6 +45,26 @@ async function main() {
     console.error(`  ${r.offers.length} Angebote, ${r.cost.toFixed(4)} $, ${r.seconds.toFixed(0)} s${r.error ? `, Fehler: ${r.error}` : ''}`);
   }
 
+  // Abgleich mit der Referenz (erstes Modell): gleiche Seite + gleicher Preis, jedes Angebot zählt nur einmal
+  const ref = results[0];
+  const agree = (r: (typeof results)[number]) => {
+    const pool = ref.offers.map((o) => `${o.page}|${o.price.toFixed(2)}`);
+    let hit = 0;
+    for (const o of r.offers) {
+      const i = pool.indexOf(`${o.page}|${o.price.toFixed(2)}`);
+      if (i >= 0) {
+        hit++;
+        pool.splice(i, 1);
+      }
+    }
+    return { recall: ref.offers.length ? hit / ref.offers.length : 0, precision: r.offers.length ? hit / r.offers.length : 0 };
+  };
+  const pct = (x: number) => `${Math.round(x * 100)} %`;
+  if (process.env.COMPARE_JSON) {
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(process.env.COMPARE_JSON, JSON.stringify({ prospekt: p.key, pages: p.pageCount, reference: ref.model, results: results.map((r) => ({ ...r, ...agree(r) })) }, null, 1));
+  }
+
   const W = 150;
   const thumb = (o: Offer) => {
     const c = o.crop;
@@ -52,7 +75,7 @@ async function main() {
   };
   const vars = pages.map((d, i) => (d ? `--p${i + 1}:url(${d});` : '')).join('');
   const summary = results
-    .map((r) => `<tr><td>${esc(r.model)}</td><td>${r.offers.length}</td><td>${r.offers.filter((o) => o.crop).length}</td><td>${r.cost.toFixed(4)} $</td><td>${r.seconds.toFixed(0)} s</td><td>${esc(r.error ?? '')}</td></tr>`)
+    .map((r, i) => `<tr><td>${esc(r.model)}${i === 0 ? ' (Referenz)' : ''}</td><td>${r.offers.length}</td><td>${i === 0 ? '–' : pct(agree(r).recall)}</td><td>${i === 0 ? '–' : pct(agree(r).precision)}</td><td>${r.offers.filter((o) => o.crop).length}</td><td>${r.cost.toFixed(4)} $</td><td>${r.seconds.toFixed(0)} s</td><td>${esc(r.error ?? '')}</td></tr>`)
     .join('');
   const sections = results
     .map(
@@ -64,7 +87,7 @@ async function main() {
   process.stdout.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Modellvergleich ${esc(p.key)}</title>
 <style>:root{${vars}}body{font:14px system-ui,sans-serif;margin:16px;background:#f6f6f3;color:#222}table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px;text-align:left}
 .grid{display:flex;flex-wrap:wrap;gap:12px}figure{margin:0;width:${W}px;background:#fff;padding:6px;border-radius:6px}.crop{background-repeat:no-repeat;border:1px solid #ddd}.none{height:60px;display:grid;place-items:center;color:#999;border:1px dashed #ccc}figcaption{margin-top:4px}</style></head>
-<body><h1>Prospekt ${esc(p.key)} (${p.pageCount} Seiten)</h1><table><tr><th>Modell</th><th>Angebote</th><th>mit Ausschnitt</th><th>Kosten</th><th>Dauer</th><th>Fehler</th></tr>${summary}</table>${sections}</body></html>`);
+<body><h1>Prospekt ${esc(p.key)} (${p.pageCount} Seiten)</h1><table><tr><th>Modell</th><th>Angebote</th><th>findet von Referenz</th><th>davon bestätigt</th><th>mit Ausschnitt</th><th>Kosten</th><th>Dauer</th><th>Fehler</th></tr>${summary}</table>${sections}</body></html>`);
 }
 
 main().catch((e) => {
