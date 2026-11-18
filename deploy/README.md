@@ -1,7 +1,7 @@
 # Betrieb der Angebotsküche
 
 Die App läuft im k3s-Cluster auf dem eigenen Server (OVH). Die Konfiguration steht im Repo
-**Mattzi/infra** (`components/supermarktapp`, Doku `docs/14-supermarktapp.md`). Dort ist auch
+**Mattzi/infra** (`components/supermarktapp`, Doku `docs/13-supermarktapp.md`). Dort ist auch
 beschrieben, welche Tresor-Einträge gebraucht werden.
 
 ```
