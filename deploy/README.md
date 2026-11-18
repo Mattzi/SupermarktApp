@@ -1,127 +1,37 @@
-# Angebotsküche auf dem eigenen Server
+# Betrieb der Angebotsküche
 
-Alles läuft in einer Docker Compose: **Caddy** (HTTPS), **Authentik** (Anmeldung, nur freigegebene Nutzer), **Postgres** (Daten von Authentik und App) und die **App**.
-Davor sitzt **Cloudflare** als DNS-Proxy (orange Wolke): Die Besucher sehen nur Cloudflare, die Hetzner-IP bleibt verborgen.
-Dazu kommt ein kleines **Relay** an einem privaten Internetanschluss, weil www.edeka.de Rechenzentren blockt.
+Die App läuft im k3s-Cluster auf dem eigenen Server (OVH). Die Konfiguration steht im Repo
+**Mattzi/infra** (`components/supermarktapp`, Doku `docs/14-supermarktapp.md`). Dort ist auch
+beschrieben, welche Tresor-Einträge gebraucht werden.
 
 ```
-Browser ──HTTPS──▶ Cloudflare ──HTTPS (Let's Encrypt)──▶ Caddy ──forward_auth──▶ Authentik
+Browser ──HTTPS──▶ Traefik ──Forward Auth──▶ Authentik (auth.mattis-kraemer.de, Gruppe „Angebotsküche“)
                      │
-                     └──▶ App (Node) ──▶ Postgres
+                     └──▶ App (Node, dieses Repo) ──▶ Postgres (gemeinsame CloudNativePG-Instanz)
                             │  ├──▶ EDEKA-App-Schnittstelle, Blätterkatalog, marktguru, ALDI, OpenStreetMap
                             │  └──▶ OpenRouter (KI)
                             ▲
 Relay zu Hause ──/relay/*──┘   (holt Seiten von www.edeka.de: GLN und Prospekt-Adresse je Markt)
 ```
 
-## 1. Cloudflare einrichten
+## Neue Version ausrollen
 
-1. **DNS** (Zone `mattis-kraemer.de`): `app` und `auth` als A-Eintrag (und AAAA, falls der Server IPv6 hat) auf die Hetzner-IP, beide **mit oranger Wolke** (Proxied).
-2. **SSL/TLS → Overview:** Modus **Full (strict)**.
-3. **SSL/TLS → Edge Certificates:** „Always Use HTTPS“ an. „Minimum TLS Version“ 1.2.
-4. **API-Token für die Zertifikate** (My Profile → API Tokens → Create Token → *Custom token*):
-   - Berechtigungen: **Zone → Zone → Read** und **Zone → DNS → Edit**
-   - Zone Resources: *Include → Specific zone → mattis-kraemer.de*
-   - Den Token als `CF_API_TOKEN` in die `.env`. Damit legt Caddy für die Let's-Encrypt-Prüfung (DNS-01) kurz einen TXT-Eintrag `_acme-challenge` an und löscht ihn wieder.
-   - Caddy holt so ein echtes, öffentlich gültiges Zertifikat und erneuert es selbst. Das passt zu **Full (strict)** und funktioniert auch, falls du die orange Wolke mal ausschaltest.
-   - Port 80 muss dafür nicht offen sein.
-5. **Relay nicht ausbremsen:** Das Relay ist ein Programm, kein Browser. Cloudflares Bot-Schutz könnte es mit einer Prüfseite aufhalten.
-   - **Security → Bots:** „Bot Fight Mode“ **aus**. Im Gratis-Tarif lässt er sich nicht auf einzelne Pfade beschränken.
-   - **Security → WAF → Custom rules → Create rule:** Name `Relay`, Bedingung *URI Path* *starts with* `/relay/`, Aktion **Skip** → alle übrigen Custom Rules, Rate Limiting, „Browser Integrity Check“. Den Schutz übernimmt der `RELAY_TOKEN`.
-6. **Caching → Cache Rules → Create rule:** Name `Kein Cache für API`, Bedingung *URI Path* *starts with* `/api/` **oder** *starts with* `/relay/` **oder** *starts with* `/outpost.goauthentik.io/`, Aktion **Bypass cache**.
-   Die App schickt passende `cache-control`-Kopfzeilen mit, die Regel ist eine zusätzliche Sicherung. Dateien unter `/assets/` darf Cloudflare ruhig zwischenspeichern, sie haben einen Hash im Namen.
+1. Push auf `hetzner` (oder `main`) → die GitHub Action `publish` baut `ghcr.io/mattzi/supermarktapp:<commit>`.
+2. Im infra-Repo in `components/supermarktapp/kustomization.yaml` unter `images:` den neuen Commit eintragen, pushen.
+   ArgoCD rollt die neue Version innerhalb von ~3 Minuten aus.
 
-**Zeitlimit:** Cloudflare bricht Anfragen nach 100 Sekunden ab (Fehler 524, im Gratis-Tarif nicht änderbar). Normale Rezeptanfragen dauern 30–70 Sekunden.
-Wenn ein langsames Modell öfter darüber liegt, für `RECIPE_MODEL` ein schnelleres Modell nehmen. Das Einlesen von Prospekten von Hand ist nicht betroffen, weil die App dabei laufend Fortschrittspunkte schickt.
+## Relay zu Hause
 
-**Nicht verwechseln:** Cloudflare schützt nur den Weg **zum** Server. Anfragen **vom** Server, z. B. an EDEKA oder ALDI, kommen weiterhin von der Hetzner-IP. Das Relay bleibt also nötig.
-
-## 2. Server einrichten
-
-1. **Hetzner-Firewall** (Cloud Console → Firewalls, dem Server zuweisen):
-   - Eingehend **TCP 443 nur von den Cloudflare-Adressen** (Liste: https://www.cloudflare.com/ips/, IPv4 und IPv6).
-   - Dazu SSH (TCP 22), am besten nur von deiner IP.
-   - Port 80 braucht es nicht: Die Umleitung auf HTTPS macht Cloudflare.
-   - So kann niemand Cloudflare umgehen und den Server direkt ansprechen. Die gleiche Adressliste steht auch im `Caddyfile` (`trusted_proxies`). Ändert Cloudflare sie, beides anpassen.
-2. Im Ordner `deploy/`:
-   ```bash
-   cp .env.example .env
-   ```
-   Ausfüllen. Geheime Werte erzeugen mit:
-   ```bash
-   openssl rand -base64 36 | tr -d '\n'
-   ```
-   Pflicht: `ACME_EMAIL`, `CF_API_TOKEN`, `AUTHENTIK_DB_PASSWORD`, `APP_DB_PASSWORD`, `AUTHENTIK_SECRET_KEY`, `RELAY_TOKEN`, `OPENROUTER_API_KEY`, `RECIPE_MODEL`, SMTP-Daten.
-3. Starten:
-   ```bash
-   docker compose up -d --build
-   ```
-   Caddy wird dabei mit dem Cloudflare-DNS-Modul gebaut (`caddy-build/Dockerfile`), das dauert beim ersten Mal ein paar Minuten.
-   Beim allerersten Start legt Postgres zusätzlich die Datenbank `angebotskueche` an (`initdb/10-app-db.sh`).
-   **Wichtig:** Das passiert nur, wenn `deploy/postgres/` noch leer ist.
-4. Prüfen: `https://auth.mattis-kraemer.de` zeigt Authentik, `https://app.mattis-kraemer.de` leitet zur Anmeldung um.
-   Bei Fehler **526** hat Caddy noch kein gültiges Zertifikat: `docker compose logs caddy` zeigt, ob die DNS-Prüfung klappt (häufig: Token ohne DNS-Edit-Recht oder für die falsche Zone). Bei **521/522** ist Caddy nicht erreichbar (Firewall, Container läuft nicht: `docker compose logs caddy`).
-
-Updates der App: `git pull`, dann `docker compose up -d --build app`.
-
-## 3. Authentik einrichten
-
-1. `https://auth.mattis-kraemer.de/if/flow/initial-setup/` öffnen und das Admin-Konto anlegen.
-2. **Provider** → *Create* → **Proxy Provider**
-   - Name: `Angebotsküche`
-   - Authorization flow: `default-provider-authorization-implicit-consent`
-   - Modus: **Forward auth (single application)**
-   - External host: `https://app.mattis-kraemer.de`
-   - Token validity: z. B. `days=30` (so bleibt man auf dem Handy angemeldet)
-3. **Application** → *Create*: Name `Angebotsküche`, Slug `angebotskueche`, Provider `Angebotsküche`.
-4. **Outposts** → *authentik Embedded Outpost* → bearbeiten → die Application `Angebotsküche` hinzufügen.
-5. **Nur freigegebene Leute:**
-   - Gruppe `angebotskueche` anlegen.
-   - Bei der Application unter *Policy / Group / User Bindings* die Gruppe `angebotskueche` binden. Dann kommt nur rein, wer in der Gruppe ist.
-   - Neue Leute: unter *Directory → Users* anlegen und in die Gruppe stecken. Oder per **Einladung**: einen Enrollment-Flow mit Invitation-Stage anlegen (Authentik-Doku „Invitations“) und den Einladungslink verschicken. Der Flow sollte die Nutzer am Ende in die Gruppe `angebotskueche` aufnehmen.
-   - Die offene Selbstregistrierung **nicht** aktivieren.
-6. **KI-Budget pro Konto** (US-Dollar pro Tag):
-   - Attribut an der Gruppe (gilt für alle Mitglieder) oder am Nutzer (überschreibt die Gruppe), z. B.:
-     ```yaml
-     ki_budget_tag_usd: 0.10
-     ```
-   - *Customization → Property Mappings* → *Create* → **Scope Mapping**, Name `Angebotsküche: KI-Budget`, Scope name `ak_proxy`, Ausdruck:
-     ```python
-     budget = request.user.group_attributes().get("ki_budget_tag_usd", "")
-     return {
-         "ak_proxy": {
-             "user_attributes": {
-                 "additionalHeaders": {
-                     "X-Ki-Budget-Tag": str(budget),
-                 }
-             }
-         }
-     }
-     ```
-   - Im Proxy Provider unter *Advanced protocol settings → Scopes* dieses Mapping zusätzlich auswählen.
-   - Ohne Attribut gilt `DAILY_USER_BUDGET_USD` aus der `.env`.
-   - Prüfen: In der App unter Märkte → „KI-Kosten“ steht „Dein Budget heute: … von …“.
-
-## 4. EDEKA
-
-### App-Schnittstelle
-
-Die App fragt zuerst die Schnittstelle der EDEKA-App ab. Liefert sie für einen Markt den eigenen Prospekt (`national=false`), braucht es keine KI.
-Für die Anmeldung braucht sie die Zugangsdaten der App (`client_credentials`). Die stehen öffentlich im Quelltext von
-[edekompile](https://github.com/ByteSizedMarius/edekompile) (`pkg/offers.go`: `offersClientID`, `offersClientSecret`).
-Trag sie als `EDEKA_APP_CLIENT_ID` und `EDEKA_APP_CLIENT_SECRET` in die `.env` ein. Das ist ein nachgebauter App-Zugang: EDEKA kann ihn jederzeit ändern.
-Dann fällt die App automatisch auf den Prospekt-Weg (KI) zurück.
-
-### Relay zu Hause
-
-Für jeden neu gewählten Markt braucht der Server einmal die **GLN** (für die App-Schnittstelle) und die **Blätterkatalog-Adresse** (für den Prospekt).
-Beides steht nur auf www.edeka.de. Das Relay holt diese Seiten über deinen Heimanschluss. Es baut nur ausgehende Verbindungen auf, du musst also keine Ports freigeben, und es lädt nur Seiten unter `https://www.edeka.de/maerkte/`.
+www.edeka.de blockt Rechenzentren, auch den OVH-Server (geprüft 2026-11-18: 403 über beide IPv4-Adressen
+und IPv6). Das Relay holt diese Seiten über deinen Heimanschluss. Es baut nur ausgehende Verbindungen auf,
+du musst also keine Ports freigeben, und es lädt nur Seiten unter `https://www.edeka.de/maerkte/`.
 
 Auf dem Gerät zu Hause (Pi, NAS, PC mit Docker), im Ordner `relay/`:
 ```bash
-RELAY_TOKEN=<gleicher Wert wie in deploy/.env> docker compose up -d --build
+RELAY_TOKEN=<Passwort aus dem Tresor-Eintrag "supermarktapp"> docker compose up -d --build
 ```
-Kontrolle: `https://app.mattis-kraemer.de/api/debug/edeka?market=<Markt-ID>` zeigt unter `relay.lastSeen`, wann sich das Relay zuletzt gemeldet hat, und unter `gln` das Ergebnis.
+Kontrolle: `https://app.mattis-kraemer.de/api/debug/edeka?market=<Markt-ID>` zeigt unter `relay.lastSeen`,
+wann sich das Relay zuletzt gemeldet hat, und unter `gln` das Ergebnis.
 
 ### Ablauf je Markt
 
@@ -129,27 +39,40 @@ Kontrolle: `https://app.mattis-kraemer.de/api/debug/edeka?market=<Markt-ID>` zei
 2. Das Relay liefert die Seiten → GLN und Blätterkatalog-Adresse werden gespeichert.
 3. Der Zeitplan (alle 30 Minuten) prüft die App-Schnittstelle:
    - **eigener Prospekt** (`national=false`) → fertig, keine KI.
-   - **nur bundesweit** → der Prospekt wird einmal pro Woche per KI aus den Seitenbildern gelesen (höchstens `EXTRACT_PER_WEEK` pro Woche für alle Märkte zusammen).
+   - **nur bundesweit** → der Prospekt wird einmal pro Woche per KI aus den Seitenbildern gelesen
+     (höchstens `EXTRACT_PER_WEEK` pro Woche für alle Märkte zusammen).
 
-## 5. KI-Modelle vergleichen
+## EDEKA-App-Schnittstelle
 
-Für die Prospekte muss das Modell Bilder lesen und Koordinaten für die Bildausschnitte liefern. Vergleich an einem echten Prospekt:
+Die Zugangsdaten der EDEKA-App (`client_credentials`) stehen öffentlich im Quelltext von
+[edekompile](https://github.com/ByteSizedMarius/edekompile) (`pkg/offers.go`: `offersClientID`, `offersClientSecret`).
+Sie gehören in den Tresor-Eintrag `supermarktapp` (Felder `edeka-client-id`, `edeka-client-secret`).
+Das ist ein nachgebauter App-Zugang: EDEKA kann ihn jederzeit ändern. Dann fällt die App automatisch
+auf den Prospekt-Weg (KI) zurück.
+
+## KI-Budget pro Konto
+
+In Authentik am Nutzer oder an der Gruppe „Angebotsküche“ das Attribut setzen (US-Dollar pro Tag):
+```yaml
+ki_budget_tag_usd: 0.10
+```
+Authentik schickt es als Kopfzeile `X-Ki-Budget-Tag` mit (Scope-Mapping per Blueprint im infra-Repo).
+Ohne Attribut gilt `DAILY_USER_BUDGET_USD`. Prüfen: In der App unter Märkte → „KI-Kosten“.
+
+## KI-Modelle vergleichen
 
 ```bash
-docker compose run --rm app node dist-server/compare.mjs MINDEN/8011165 deepseek/deepseek-v4.1-flash <gemini-flash-modell> > vergleich.html
+kubectl -n supermarktapp exec deploy/supermarktapp -- \
+  node dist-server/compare.mjs MINDEN/8011165 deepseek/deepseek-v4.1-flash <gemini-flash-modell> > vergleich.html
 ```
+`MINDEN/8011165` ist die Blätterkatalog-Adresse eines Markts (steht nach dem Relay unter `/api/debug/edeka`).
+Das bessere Modell dann im infra-Repo als `EXTRACT_MODEL` eintragen (`components/supermarktapp/deployment.yaml`).
 
-`MINDEN/8011165` ist die Blätterkatalog-Adresse eines Markts (steht nach dem Relay unter `/api/debug/edeka`, Feld `idx` bzw. `prospekte`).
-Die genauen Modellnamen stehen auf https://openrouter.ai/models. Die `vergleich.html` zeigt je Modell Anzahl, Kosten, Dauer und die Bildausschnitte.
-Das bessere Modell dann als `EXTRACT_MODEL` in die `.env` eintragen und `docker compose up -d app` ausführen.
+## Prüfen, was vom Server aus erreichbar ist
 
-## 6. Prüfen, was vom Server aus erreichbar ist
+`https://app.mattis-kraemer.de/api/debug/sources` fragt EDEKA, marktguru, ALDI Nord/SÜD und OpenStreetMap ab.
 
-`https://app.mattis-kraemer.de/api/debug/sources` fragt EDEKA, marktguru, ALDI Nord/SÜD und OpenStreetMap ab und zeigt die Statuscodes.
+## Lokal entwickeln
 
-## Daten sichern
-
-Alles Wichtige liegt in `deploy/postgres/` (Authentik und App) und `deploy/authentik/`. Ein Dump der App-Daten:
-```bash
-docker compose exec postgresql pg_dump -U authentik angebotskueche > angebotskueche.sql
-```
+Siehe [README](../README.md). Für die Compose-Variante (Caddy, eigenes Authentik/Postgres) siehe die Git-Historie
+vor dem Umzug in den Cluster.

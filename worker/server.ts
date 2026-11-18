@@ -1,4 +1,4 @@
-// Node-Server für den eigenen Server (Hetzner): liefert die App aus dist/ aus, leitet /api/* und /relay/*
+// Node-Server (läuft im k3s-Cluster, Repo Mattzi/infra): liefert die App aus dist/ aus, leitet /api/* und /relay/*
 // an die API weiter und startet alle 30 Minuten den Zeitplan (Prospekte einlesen, Wochen-Push).
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createReadStream } from 'node:fs';

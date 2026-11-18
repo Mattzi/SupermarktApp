@@ -9,7 +9,7 @@ Rezepte aus den aktuellen Supermarkt-Angeboten, sortiert nach Preis pro Portion.
   - `GET /api/health` – Einstellungen und KI-Kosten
   - `/relay/*` – Aufträge für das EDEKA-Relay zu Hause (`relay/`)
 - **Gemeinsame Typen:** `shared/types.ts`
-- **Betrieb:** Docker Compose mit Caddy, Authentik und Postgres, siehe [`deploy/README.md`](deploy/README.md)
+- **Betrieb:** im k3s-Cluster (Repo `Mattzi/infra`, Ordner `components/supermarktapp`), Image baut die GitHub Action, siehe [`deploy/README.md`](deploy/README.md)
 
 ## Entwickeln
 

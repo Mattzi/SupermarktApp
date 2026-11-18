@@ -1,4 +1,4 @@
-// Relay für www.edeka.de: Die Website blockt Rechenzentren (auch Hetzner). Ein kleines Programm an einem
+// Relay für www.edeka.de: Die Website blockt Rechenzentren (auch Hetzner und OVH, geprüft 2026-11-18). Ein kleines Programm an einem
 // privaten Anschluss (relay/relay.mjs) holt sich hier Aufträge ab, lädt die Seiten und schickt sie zurück.
 // Gebraucht wird das nur einmal pro Markt: für die GLN (App-Schnittstelle) und die Blätterkatalog-Adresse.
 import type { Kv } from './kv';

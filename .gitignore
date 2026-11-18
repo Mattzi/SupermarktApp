@@ -4,7 +4,3 @@ dist
 .dev.vars
 *.log
 dist-server
-deploy/.env
-deploy/postgres
-deploy/caddy
-deploy/authentik

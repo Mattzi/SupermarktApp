@@ -1,6 +1,7 @@
-// Wer angemeldet ist, sagt Authentik: Caddy fragt vor jeder Anfrage per Forward-Auth bei Authentik nach
-// und reicht die Nutzerdaten als Kopfzeilen weiter (X-Authentik-*). Die App selbst ist nur über Caddy
-// erreichbar, und Caddy entfernt diese Kopfzeilen aus Anfragen von außen (siehe deploy/Caddyfile).
+// Wer angemeldet ist, sagt Authentik: Traefik fragt vor jeder Anfrage per Forward-Auth bei Authentik nach
+// und reicht die Nutzerdaten als Kopfzeilen weiter (X-Authentik-*). Die App selbst ist nur über Traefik
+// erreichbar (NetworkPolicy), und Traefik entfernt diese Kopfzeilen aus Anfragen von außen
+// (Middleware strip-auth-headers im infra-Repo, components/supermarktapp/ingress.yaml).
 
 export interface User {
   email: string;
