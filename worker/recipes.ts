@@ -1,4 +1,5 @@
 // Erzeugt Rezepte aus den aktuellen Angeboten mit einem KI-Modell über OpenRouter.
+import { stripBio } from '../shared/bio';
 import type { Diet, Offer, Recipe, RecipeIngredient, RecipeRequest, RecipesResponse } from '../shared/types';
 import type { Env } from './index';
 import type { Tracker } from './costs';
@@ -43,7 +44,7 @@ const GROUP_PRIORITY: Record<string, number> = {
 const fold = (t: string) => t.toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
 
 export function dislikedBy(req: RecipeRequest) {
-  const words = (req.dislikes ?? []).map((d) => fold(d.trim())).filter((d) => d.length >= 3);
+  const words = (req.dislikes ?? []).map((d) => fold(stripBio(d))).filter((d) => d.length >= 3);
   return (o: Offer) => words.some((w) => fold(`${o.name} ${o.brand ?? ''}`).includes(w));
 }
 
@@ -202,7 +203,7 @@ function buildPrompt(req: RecipeRequest, offers: Offer[], cart: Offer[]): { syst
   }
   if (req.wishes?.trim()) lines.push(`WICHTIG – Wunsch, der für jedes Rezept gilt: ${req.wishes.trim().slice(0, 300)}`);
   const dislikes = (req.dislikes ?? []).map((d) => d.trim()).filter(Boolean).slice(0, 40);
-  if (dislikes.length) lines.push(`Der Nutzer mag NICHT – diese Zutaten niemals verwenden, auch nicht als Beilage: ${dislikes.join(', ')}.`);
+  if (dislikes.length) lines.push(`Der Nutzer mag NICHT – diese Zutaten niemals verwenden, auch nicht als Beilage und auch nicht als Bio-Variante: ${dislikes.join(', ')}.`);
   if (req.replace) {
     lines.push(`Erstelle nur 1 Rezept als Ersatz. Es soll sich deutlich von diesen unterscheiden: ${req.replace.avoidTitles.slice(0, 10).join('; ')}.`);
   }

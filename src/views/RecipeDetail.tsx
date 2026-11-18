@@ -1,3 +1,4 @@
+import { stripBio } from '../../shared/bio';
 import { useState } from 'react';
 import type { Recipe, RecipeIngredient } from '../../shared/types';
 import { DIET_SHORT, euro, shortChain } from '../format';
@@ -141,8 +142,8 @@ export function RecipeDetail({
         <h2>Nicht dein Fall?</h2>
         <p className="muted small">Tipp an, was du nicht magst – es kommt dann in keinem Rezept mehr vor. Ändern kannst du das unter Märkte.</p>
         <div className="group-row tight wrap">
-          {[...new Set(r.ingredients.filter((i) => !i.pantry).map((i) => i.name))].map((name) => {
-            const on = dislikes.some((d) => d.toLowerCase() === name.toLowerCase());
+          {[...new Set(r.ingredients.filter((i) => !i.pantry).map((i) => stripBio(i.name)))].map((name) => {
+            const on = dislikes.some((d) => stripBio(d).toLowerCase() === name.toLowerCase());
             return (
               <button key={name} className={`chip ${on ? 'on dislike' : ''}`} aria-pressed={on} onClick={() => onDislike(name)}>
                 {on ? `✕ ${name}` : name}

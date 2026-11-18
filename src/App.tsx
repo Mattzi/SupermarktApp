@@ -1,3 +1,4 @@
+import { stripBio } from '../shared/bio';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Leaflet, Recipe, RecipeRequest, RecipesResponse } from '../shared/types';
 import { api, loadLastRecipes, LoginError, useCart, useOffers, useSavedRecipes, useSettings, useShoppingList, useStores, useSyncReload, useTrip, write } from './store';
@@ -106,10 +107,11 @@ export default function App() {
   }, [ready, gen.loading, replacing, plz, activeChains, markets, settings, cart.cart, wishes, results]);
 
   const toggleDislike = useCallback(
-    (name: string) => {
+    (raw: string) => {
+      const name = stripBio(raw);
       const d = settings.dislikes ?? [];
-      const has = d.some((x) => x.toLowerCase() === name.toLowerCase());
-      updateSettings({ dislikes: has ? d.filter((x) => x.toLowerCase() !== name.toLowerCase()) : [...d, name] });
+      const same = (x: string) => stripBio(x).toLowerCase() === name.toLowerCase();
+      updateSettings({ dislikes: d.some(same) ? d.filter((x) => !same(x)) : [...d, name] });
     },
     [settings.dislikes, updateSettings],
   );
