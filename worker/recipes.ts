@@ -169,13 +169,18 @@ function buildPrompt(req: RecipeRequest, offers: Offer[], cart: Offer[]): { syst
     '- Zutaten, die nicht im Angebot sind, mit realistischem Discounter-Preis für die kleinste übliche Packung schätzen (estimatedPrice).',
     '- usedFraction = welcher Anteil der gekauften Menge im Rezept verbraucht wird (für den Preis pro Portion).',
     '- Grundvorrat (Salz, Pfeffer, Öl, Zucker, Mehl, Brühe, gängige Gewürze, Essig, Senf) mit pantry=true, ohne Preis.',
-    '- Bevorzuge pro Rezept Angebote aus möglichst einem Markt, damit man nur in einen Laden muss.',
     '- Abwechslung: unterschiedliche Küchen und Hauptzutaten über die Rezepte hinweg.',
     '- Schritte kurz und klar, auf Deutsch, Mengen in den Schritten nennen.',
     '- Mengen in den Zutaten immer für die Gesamtzahl der Portionen.',
   ].join('\n');
 
   const lines: string[] = [];
+  const stores = [...new Set(offers.map((o) => o.chain))];
+  lines.push(
+    stores.length > 1
+      ? `Der Nutzer kauft bewusst in diesen Märkten ein und kombiniert sie: ${stores.join(', ')}. Hole pro Rezept die besten Angebote aus ALLEN diesen Märkten und mische sie frei – ein Rezept soll, wo es passt, Angebote aus mindestens zwei Märkten nutzen. Wichtigstes Ziel: möglichst viele Zutaten kommen aus Angeboten. Nur bei gleichwertigen Angeboten nimm denselben Markt.`
+      : 'Alle Angebote stammen aus einem Markt. Nutze möglichst viele davon.',
+  );
   if (!req.replace) lines.push(`Erstelle 5 Rezepte.`);
   lines.push(`Ernährung: ${DIET_TEXT[req.diet] ?? DIET_TEXT.alles}`);
   lines.push(
