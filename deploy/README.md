@@ -56,7 +56,7 @@ In Authentik am Nutzer oder an der Gruppe „Angebotsküche“ das Attribut setz
 ki_budget_tag_usd: 0.10
 ```
 Authentik schickt es als Kopfzeile `X-Ki-Budget-Tag` mit (Scope-Mapping per Blueprint im infra-Repo).
-Ohne Attribut gilt `DAILY_USER_BUDGET_USD`. Prüfen: In der App unter Märkte → „KI-Kosten“.
+Ohne Attribut gilt `DAILY_USER_BUDGET_USD`. Prüfen: In der App unter Einstellungen (Zahnrad oben) → „KI-Kosten“. Ein neuer Wert gilt erst nach neuer Anmeldung (`/outpost.goauthentik.io/sign_out`, danach `/api/login`).
 
 ## KI-Modelle vergleichen
 
