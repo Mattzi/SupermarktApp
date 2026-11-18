@@ -90,6 +90,8 @@ export default function App() {
   // Ergebnis ab – sofort, nach 5 Minuten oder nach Tagen. Die Auftrags-ID merkt sich der Browser.
   const [pending, setPending] = useState<PendingJob | null>(() => readPending());
   const [doneJobs, setDoneJobs] = useState<JobInfo[]>([]);
+  // Schon abgeholte Aufträge: das Löschen auf dem Server ist evtl. noch nicht durch, wenn die Liste neu geladen wird
+  const handledRef = useRef(new Set<string>());
   const resultsRef = useRef(results);
   resultsRef.current = results;
 
@@ -123,10 +125,12 @@ export default function App() {
         const r = await api<{ job: JobInfo; result?: RecipesResponse }>(`/api/recipes/jobs/${pending.id}`);
         if (stop) return;
         if (r.job.status === 'done' && r.result) {
+          handledRef.current.add(pending.id);
           applyResult(r.result, pending.replaceId);
           clearPending();
           void api(`/api/recipes/jobs/${pending.id}`, { method: 'DELETE' }).catch(() => undefined);
         } else if (r.job.status === 'failed') {
+          handledRef.current.add(pending.id);
           setGen((g) => ({ ...g, error: r.job.error ?? 'Das Bauen der Rezepte ist fehlgeschlagen.' }));
           clearPending();
           void api(`/api/recipes/jobs/${pending.id}`, { method: 'DELETE' }).catch(() => undefined);
@@ -163,7 +167,7 @@ export default function App() {
         savePending(p);
         setPending(p);
       }
-      setDoneJobs(jobs.filter((j) => (j.status === 'done' || j.status === 'failed') && j.id !== readPending()?.id));
+      setDoneJobs(jobs.filter((j) => (j.status === 'done' || j.status === 'failed') && j.id !== readPending()?.id && !handledRef.current.has(j.id)));
     } catch {
       /* offline oder abgemeldet – egal */
     }
@@ -177,6 +181,7 @@ export default function App() {
 
   const collectJob = useCallback(
     async (id: string, discard?: boolean) => {
+      handledRef.current.add(id);
       try {
         if (!discard) {
           const r = await api<{ job: JobInfo; result?: RecipesResponse }>(`/api/recipes/jobs/${id}`);
