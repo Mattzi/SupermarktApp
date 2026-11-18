@@ -207,6 +207,7 @@ function buildPrompt(req: RecipeRequest, offers: Offer[], cart: Offer[]): { syst
   if (req.replace) {
     lines.push(`Erstelle nur 1 Rezept als Ersatz. Es soll sich deutlich von diesen unterscheiden: ${req.replace.avoidTitles.slice(0, 10).join('; ')}.`);
   }
+  lines.push('Jedes Angebot steht nur EINMAL in der Zutatenliste. Braucht das Rezept mehr als eine Packung, setze packs (z. B. packs = 2) und gib die Gesamtmenge in quantity an – keine zweite Zeile mit derselben offerId.');
   lines.push('');
   lines.push('Aktuelle Angebote (ID | Markt | Produkt | Packung | Preis | Gruppe | Ernährung | Hinweis):');
   for (const o of offers) lines.push(offerLine(o));
@@ -247,9 +248,38 @@ function matchByName(name: string, offers: Offer[]): Offer | undefined {
   });
 }
 
+/** "500 g" + "250 g" = "750 g"; passt das nicht zusammen, werden die Mengen mit " + " verbunden */
+export function addQuantities(a: string, b: string): string {
+  const m = (t: string) => t.trim().match(/^(\d+(?:[.,]\d+)?)\s*(.*)$/);
+  const x = m(a), y = m(b);
+  if (x && y && x[2].toLowerCase() === y[2].toLowerCase()) {
+    const sum = Number(x[1].replace(',', '.')) + Number(y[1].replace(',', '.'));
+    return `${String(Math.round(sum * 100) / 100).replace('.', ',')}${x[2] ? ' ' + x[2] : ''}`;
+  }
+  return a.trim() === b.trim() ? a : `${a} + ${b}`;
+}
+
+/** Dasselbe Angebot nur einmal aufführen (die KI nennt es manchmal in zwei Zeilen statt packs = 2) */
+function mergeSameOffer(list: RecipeIngredient[]): RecipeIngredient[] {
+  const out: RecipeIngredient[] = [];
+  for (const i of list) {
+    const prev = i.offer ? out.find((x) => x.offer?.id === i.offer!.id) : undefined;
+    if (!prev || !prev.offer || !i.offer) {
+      out.push(i);
+      continue;
+    }
+    const packs = prev.offer.packs + i.offer.packs;
+    prev.offer = { ...prev.offer, packs };
+    prev.quantity = addQuantities(prev.quantity, i.quantity);
+    prev.cost = r2(packs * prev.offer.price);
+    prev.usedCost = r2(prev.usedCost + i.usedCost);
+  }
+  return out;
+}
+
 export function priceRecipe(raw: RawRecipe, byId: Map<number, Offer>, servings: number, idx: number, cart: number[] = []): Recipe {
   const all = [...byId.values()];
-  const ingredients: RecipeIngredient[] = raw.ingredients.map((i) => {
+  const ingredients: RecipeIngredient[] = mergeSameOffer(raw.ingredients.map((i) => {
     let o = i.offerId != null ? byId.get(i.offerId) : undefined;
     if (!o && !i.pantry && !(typeof i.estimatedPrice === 'number' && i.estimatedPrice > 0)) o = matchByName(i.name, all);
     const frac = typeof i.usedFraction === 'number' && i.usedFraction > 0 ? Math.min(1, i.usedFraction) : 1;
@@ -282,7 +312,7 @@ export function priceRecipe(raw: RawRecipe, byId: Map<number, Offer>, servings: 
     if (i.pantry) return { name: i.name, quantity: i.quantity, pantry: true, cost: 0, usedCost: 0 };
     const est = typeof i.estimatedPrice === 'number' && i.estimatedPrice > 0 ? i.estimatedPrice : 0;
     return { name: i.name, quantity: i.quantity, pantry: false, estimatedPrice: est, cost: r2(est), usedCost: r2(est * frac) };
-  });
+  }));
   const offerCost = r2(ingredients.filter((i) => i.offer).reduce((s, i) => s + i.cost, 0));
   const estimatedCost = r2(ingredients.filter((i) => !i.offer).reduce((s, i) => s + i.cost, 0));
   const totalCost = r2(offerCost + estimatedCost);

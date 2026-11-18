@@ -122,3 +122,20 @@ void (async () => {
   eq(r.offers[0].desc, 'Ab Donnerstag erhältlich · aus Deutschland · Stück', 'mobil verfuegbarkeit');
   eq(r.offers[0].validTo, '2026-11-07T23:59:59+01:00', 'mobil gueltig bis');
 })();
+
+// Dasselbe Angebot in zwei Zeilen wird zu einer Zeile mit 2 Packungen
+import { addQuantities } from '../worker/recipes';
+{
+  const o = { id: 5, chain: 'Lidl', name: 'Puten-Geschnetzeltes', price: 3.49, pack: '400 g' } as Offer;
+  const r = priceRecipe(
+    { title: 't', description: '', minutes: 10, diet: 'fleisch', steps: [], storage: '', ingredients: [
+      { name: 'Puten-Geschnetzeltes', quantity: '400 g', offerId: 5, packs: 1, estimatedPrice: null, pantry: false },
+      { name: 'Brokkoli', quantity: '1 Stück', offerId: null, packs: null, estimatedPrice: 1.2, pantry: false },
+      { name: 'Puten-Geschnetzeltes', quantity: '400 g', offerId: 5, packs: 1, estimatedPrice: null, pantry: false },
+    ] },
+    new Map([[5, o]]), 2, 0,
+  );
+  eq([r.ingredients.length, r.ingredients[0].offer?.packs, r.ingredients[0].quantity, r.ingredients[0].cost, r.offerCost], [2, 2, '800 g', 6.98, 6.98], 'doppelte Zeile zusammengefasst');
+  eq(addQuantities('1,5 kg', '500 g'), '1,5 kg + 500 g', 'Mengen mit verschiedener Einheit');
+  eq(addQuantities('2 Stück', '1 Stück'), '3 Stück', 'Mengen addiert');
+}
