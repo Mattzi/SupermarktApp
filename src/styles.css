@@ -1631,9 +1631,10 @@ h3 {
   margin-left: 0;
   flex: none;
 }
+/* clip statt hidden: hidden macht body zum Scroll-Container, dann klebt die Kopfleiste nicht mehr oben */
 html,
 body {
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* Elemente nur für den Apple-Look */
@@ -1641,7 +1642,8 @@ body {
   margin: 0;
 }
 .large-title,
-.nav-title {
+.nav-title,
+.chain-row.below-title {
   display: none;
 }
 .switch-desc::before {

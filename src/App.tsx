@@ -291,9 +291,35 @@ export default function App() {
       </ListContext.Provider>
     );
 
+  // Markt-Chips: im klassischen Design in der Kopfleiste, im Apple-Look unter dem großen Titel
+  const chainRow = (where: string) =>
+    baseChains.length > 0 && (
+      <div className={`chain-row ${where}`} role="group" aria-label="Heute einkaufen bei">
+        {baseChains.map((c) => {
+          const on = !skipToday.includes(c);
+          return (
+            <button
+              key={c}
+              className={`chain-chip ${on ? 'on' : ''}`}
+              aria-pressed={on}
+              onClick={() => setSkipToday((s) => (on ? [...s, c] : s.filter((x) => x !== c)))}
+            >
+              {shortChain(c)}
+              {chainCounts.has(c) && <span className="count">{chainCounts.get(c)}</span>}
+            </button>
+          );
+        })}
+        {trip && (
+          <button className="chain-chip trip-end" onClick={() => setTrip(null)}>
+            Zurück nach Hause
+          </button>
+        )}
+      </div>
+    );
+
   return (
     <ListContext.Provider value={listActions}>
-    <div className="app">
+    <div className={`app tab-${tab}`}>
       <header className={`topbar ${scrolled ? 'scrolled' : ''}`}>
         <div className="topbar-row">
           <p className="brand">Angebotsküche</p>
@@ -301,8 +327,9 @@ export default function App() {
             {TAB_TITLES[tab]}
           </span>
           {plz && (
-            <button className="plz-pill" onClick={() => setTab('maerkte')} aria-label="Märkte und PLZ ändern">
-              {trip ? 'Unterwegs' : 'Zuhause'} · {plz}
+            <button className={`plz-pill ${trip ? 'trip' : ''}`} onClick={() => setTab('maerkte')} aria-label="Märkte und PLZ ändern">
+              <span className="plz-where">{trip ? 'Unterwegs' : 'Zuhause'} · </span>
+              {plz}
             </button>
           )}
           <button className={`gear ${tab === 'einstellungen' ? 'on' : ''}`} onClick={() => setTab('einstellungen')} aria-label="Einstellungen">
@@ -312,32 +339,11 @@ export default function App() {
             </svg>
           </button>
         </div>
-        {baseChains.length > 0 && (
-          <div className="chain-row" role="group" aria-label="Heute einkaufen bei">
-            {baseChains.map((c) => {
-              const on = !skipToday.includes(c);
-              return (
-                <button
-                  key={c}
-                  className={`chain-chip ${on ? 'on' : ''}`}
-                  aria-pressed={on}
-                  onClick={() => setSkipToday((s) => (on ? [...s, c] : s.filter((x) => x !== c)))}
-                >
-                  {shortChain(c)}
-                  {chainCounts.has(c) && <span className="count">{chainCounts.get(c)}</span>}
-                </button>
-              );
-            })}
-            {trip && (
-              <button className="chain-chip trip-end" onClick={() => setTrip(null)}>
-                Zurück nach Hause
-              </button>
-            )}
-          </div>
-        )}
+        {chainRow('in-header')}
       </header>
 
       <h1 className="large-title">{TAB_TITLES[tab]}</h1>
+      {chainRow('below-title')}
 
       <main className="content">
         {tab === 'kochen' && (

@@ -78,7 +78,7 @@ html[data-design='apple'] .topbar {
   -webkit-backdrop-filter: saturate(180%) blur(24px);
   backdrop-filter: saturate(180%) blur(24px);
   color: var(--ink);
-  padding: calc(6px + env(safe-area-inset-top)) 16px 8px;
+  padding: env(safe-area-inset-top) 16px 0;
   border-bottom: 0.5px solid transparent;
   transition: border-color 0.25s var(--spring);
 }
@@ -142,17 +142,49 @@ html[data-design='apple'] .chain-chip.trip-end {
   color: var(--basil);
 }
 
-/* Großer Titel */
+/* Kopfzeile ist genau so hoch wie eine iOS-Navigationsleiste */
+html[data-design='apple'] .topbar-row {
+  height: 44px;
+}
+/* PLZ-Pille kompakt: nur die Postleitzahl (unterwegs mit Hinweis) */
+html[data-design='apple'] .plz-where {
+  display: none;
+}
+html[data-design='apple'] .plz-pill.trip .plz-where {
+  display: inline;
+}
+html[data-design='apple'] .app.tab-einstellungen .plz-pill {
+  display: none;
+}
+
+/* Großer Titel: steht in derselben Zeile wie PLZ und Zahnrad (rutscht unter die durchsichtige Kopfleiste) */
 html[data-design='apple'] .large-title {
   display: block;
+  position: relative;
   max-width: 640px;
-  margin: 0 auto;
-  padding: 6px 20px 12px;
+  height: 44px;
+  margin: -44px auto 6px;
+  padding: 0 20px;
   font-family: var(--display);
   font-size: 2.1rem;
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 44px;
   letter-spacing: -0.03em;
+  pointer-events: none;
+}
+
+/* Markt-Chips unter dem Titel statt in der Kopfleiste; im Kochen-Tab stehen sie schon unter „Einkaufen bei“ */
+html[data-design='apple'] .chain-row.in-header {
+  display: none;
+}
+html[data-design='apple'] .chain-row.below-title {
+  display: flex;
+  margin: 0 auto 14px;
+  padding: 0 16px;
+  max-width: 640px;
+}
+html[data-design='apple'] .app.tab-kochen .chain-row.below-title {
+  display: none;
 }
 /* Der Einstellungs-Titel steht schon groß oben */
 html[data-design='apple'] .title-dup {
@@ -362,9 +394,25 @@ html[data-design='apple'] .chip.on.dislike {
   background: var(--tomato-soft);
   color: var(--tomato);
 }
+/* Gespeicherte Kombis: grau, solange sie nicht aktiv sind */
 html[data-design='apple'] .combo {
   border: 0;
+  background: var(--fill);
+}
+html[data-design='apple'] .combo button {
+  color: var(--ink);
+  font-weight: 500;
+}
+html[data-design='apple'] .combo button + button {
+  color: var(--muted);
+  opacity: 1;
+}
+html[data-design='apple'] .combo.on {
   background: var(--basil-soft);
+}
+html[data-design='apple'] .combo.on button {
+  color: var(--basil);
+  font-weight: 600;
 }
 
 /* ---------- Segmented Control (iOS) ---------- */
