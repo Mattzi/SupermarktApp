@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { DietChoice, Offer, Recipe, RecipesResponse } from '../../shared/types';
+import type { DietChoice, JobInfo, Offer, Recipe, RecipesResponse } from '../../shared/types';
 import { api, type Settings } from '../store';
 import { DIET_LABEL, DIET_SHORT, euro, shortChain, validity } from '../format';
 import { expiry } from '../shopping';
@@ -29,6 +29,9 @@ interface Props {
   gen: GenState;
   onGenerate: () => void;
   onReplace: (id: string) => void;
+  /** Fertige Aufträge, die noch nicht abgeholt wurden */
+  doneJobs: JobInfo[];
+  onCollect: (id: string, discard?: boolean) => void;
   replacing: string | null;
   saved: Recipe[];
   isSaved: (r: Recipe) => boolean;
@@ -252,6 +255,8 @@ export function CookView(p: Props) {
         {gen.loading && (
           <p className="loading-note" role="status">
             Die KI sucht die passenden Angebote und rechnet die Preise aus. Das dauert {fast ? 'etwa 10–20' : 'meist 30–70'} Sekunden. ({elapsed} s)
+            <br />
+            Das läuft auf dem Server: Du kannst die App schließen und später wiederkommen, das Ergebnis wartet dann hier auf dich.
           </p>
         )}
         {p.activeChains.length === 0 && <p className="warn">Wähle oben mindestens einen Markt aus.</p>}
@@ -266,6 +271,28 @@ export function CookView(p: Props) {
           </p>
         )}
       </section>
+
+      {p.doneJobs.length > 0 && (
+        <section className="card" aria-label="Fertige Rezepte zum Abholen">
+          <h2>Fertig zum Abholen</h2>
+          {p.doneJobs.map((j) => (
+            <div key={j.id} className="group-row tight wrap">
+              <span className="muted small">
+                {new Date(j.finishedAt ?? j.createdAt).toLocaleString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                {j.status === 'failed' ? ` · fehlgeschlagen: ${j.error ?? 'unbekannt'}` : j.replaceId ? ' · ein Ersatz-Rezept' : ` · ${j.recipeCount ?? 0} Rezepte`}
+              </span>
+              {j.status === 'done' && (
+                <button className="secondary" onClick={() => p.onCollect(j.id)}>
+                  Abholen
+                </button>
+              )}
+              <button className="list-toggle" onClick={() => p.onCollect(j.id, true)}>
+                Verwerfen
+              </button>
+            </div>
+          ))}
+        </section>
+      )}
 
       {p.results && p.results.recipes.length > 0 && (
         <section className={`results ${gen.loading ? 'stale' : ''}`} aria-label="Rezepte, günstigste zuerst" aria-busy={gen.loading}>

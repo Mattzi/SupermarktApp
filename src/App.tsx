@@ -1,6 +1,6 @@
 import { stripBio } from '../shared/bio';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { Leaflet, Recipe, RecipeRequest, RecipesResponse } from '../shared/types';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { JobInfo, Leaflet, Recipe, RecipeRequest, RecipesResponse } from '../shared/types';
 import { api, loadLastRecipes, LoginError, useCart, useOffers, useSavedRecipes, useSettings, useShoppingList, useStores, useSyncReload, useTrip, write } from './store';
 import { shortChain } from './format';
 import { CookView, type GenState } from './views/Cook';
@@ -11,6 +11,28 @@ import { OffersView } from './views/Offers';
 import { MarketsView } from './views/Markets';
 import { RecipeDetail } from './views/RecipeDetail';
 import { LeafletView } from './views/LeafletView';
+
+interface PendingJob {
+  id: string;
+  replaceId?: string;
+}
+const PENDING_KEY = 'recipeJob';
+function readPending(): PendingJob | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(PENDING_KEY) ?? 'null');
+    return v && typeof v.id === 'string' ? v : null;
+  } catch {
+    return null;
+  }
+}
+function savePending(p: PendingJob | null) {
+  try {
+    if (p) localStorage.setItem(PENDING_KEY, JSON.stringify(p));
+    else localStorage.removeItem(PENDING_KEY);
+  } catch {
+    /* Speicher gesperrt – egal */
+  }
+}
 
 type Tab = 'kochen' | 'angebote' | 'einkauf' | 'maerkte' | 'einstellungen';
 
@@ -64,9 +86,113 @@ export default function App() {
   // Märkte sind eingerichtet; ob heute welche ausgewählt sind, prüft der Knopf
   const ready = !!plz && baseChains.length > 0;
 
-  // Rezepte werden NUR hier gebaut – ausgelöst durch den Knopf im Kochen-Tab
+  // Rezepte baut der Server im Hintergrund (Warteschlange). Die App legt nur den Auftrag an und holt das
+  // Ergebnis ab – sofort, nach 5 Minuten oder nach Tagen. Die Auftrags-ID merkt sich der Browser.
+  const [pending, setPending] = useState<PendingJob | null>(() => readPending());
+  const [doneJobs, setDoneJobs] = useState<JobInfo[]>([]);
+  const resultsRef = useRef(results);
+  resultsRef.current = results;
+
+  const applyResult = useCallback((data: RecipesResponse, replaceId?: string) => {
+    const cur = resultsRef.current;
+    let next = data;
+    if (replaceId) {
+      // Nur das eine Rezept austauschen, Rest bleibt
+      if (!cur || !data.recipes[0] || !cur.recipes.some((r) => r.id === replaceId)) return;
+      const recipes = cur.recipes.map((r) => (r.id === replaceId ? data.recipes[0] : r)).sort((a, b) => a.perPortion - b.perPortion);
+      next = { ...cur, recipes };
+    }
+    setResults(next);
+    write('lastRecipes', next);
+  }, []);
+
+  const clearPending = useCallback(() => {
+    savePending(null);
+    setPending(null);
+    setReplacing(null);
+    setGen((g) => ({ ...g, loading: false }));
+  }, []);
+
+  // Auftrag abfragen, solange er läuft (auch nach dem Wiedereinschalten des Handys)
+  useEffect(() => {
+    if (!pending) return;
+    let stop = false;
+    const tick = async () => {
+      if (stop) return;
+      try {
+        const r = await api<{ job: JobInfo; result?: RecipesResponse }>(`/api/recipes/jobs/${pending.id}`);
+        if (stop) return;
+        if (r.job.status === 'done' && r.result) {
+          applyResult(r.result, pending.replaceId);
+          clearPending();
+          void api(`/api/recipes/jobs/${pending.id}`, { method: 'DELETE' }).catch(() => undefined);
+        } else if (r.job.status === 'failed') {
+          setGen((g) => ({ ...g, error: r.job.error ?? 'Das Bauen der Rezepte ist fehlgeschlagen.' }));
+          clearPending();
+          void api(`/api/recipes/jobs/${pending.id}`, { method: 'DELETE' }).catch(() => undefined);
+        } else if (pending.replaceId) setReplacing(pending.replaceId);
+        else setGen((g) => (g.loading && g.startedAt === Date.parse(r.job.createdAt) ? g : { ...g, loading: true, error: null, startedAt: Date.parse(r.job.createdAt) }));
+      } catch (e) {
+        if (e instanceof LoginError) {
+          setGen((g) => ({ ...g, error: e.message, loginExpired: true }));
+          clearPending();
+        } else if (e instanceof Error && /nicht gefunden/.test(e.message)) {
+          clearPending(); // Auftrag gibt es nicht mehr (abgeholt oder abgelaufen)
+        }
+        // sonst: kurz keine Verbindung – beim nächsten Mal nochmal versuchen
+      }
+    };
+    void tick();
+    const t = window.setInterval(tick, 3000);
+    const vis = () => document.visibilityState === 'visible' && void tick();
+    document.addEventListener('visibilitychange', vis);
+    return () => {
+      stop = true;
+      window.clearInterval(t);
+      document.removeEventListener('visibilitychange', vis);
+    };
+  }, [pending?.id, pending?.replaceId, applyResult, clearPending]);
+
+  // Fertige (oder von einem anderen Gerät gestartete) Aufträge finden
+  const refreshJobs = useCallback(async () => {
+    try {
+      const { jobs } = await api<{ jobs: JobInfo[] }>('/api/recipes/jobs');
+      const running = jobs.find((j) => j.status === 'queued' || j.status === 'running');
+      if (running && !readPending()) {
+        const p = { id: running.id, replaceId: running.replaceId };
+        savePending(p);
+        setPending(p);
+      }
+      setDoneJobs(jobs.filter((j) => (j.status === 'done' || j.status === 'failed') && j.id !== readPending()?.id));
+    } catch {
+      /* offline oder abgemeldet – egal */
+    }
+  }, []);
+  useEffect(() => {
+    void refreshJobs();
+    const vis = () => document.visibilityState === 'visible' && void refreshJobs();
+    document.addEventListener('visibilitychange', vis);
+    return () => document.removeEventListener('visibilitychange', vis);
+  }, [refreshJobs, pending?.id]);
+
+  const collectJob = useCallback(
+    async (id: string, discard?: boolean) => {
+      try {
+        if (!discard) {
+          const r = await api<{ job: JobInfo; result?: RecipesResponse }>(`/api/recipes/jobs/${id}`);
+          if (r.result) applyResult(r.result, r.job.replaceId);
+        }
+        await api(`/api/recipes/jobs/${id}`, { method: 'DELETE' });
+      } catch (e) {
+        setGen((g) => ({ ...g, error: e instanceof Error ? e.message : String(e) }));
+      }
+      setDoneJobs((l) => l.filter((j) => j.id !== id));
+    },
+    [applyResult],
+  );
+
   const generate = useCallback(async (replaceId?: string) => {
-    if (!ready || activeChains.length === 0 || gen.loading || replacing) return;
+    if (!ready || activeChains.length === 0 || gen.loading || replacing || pending) return;
     if (replaceId) setReplacing(replaceId);
     else setGen({ loading: true, error: null, loginExpired: false, startedAt: Date.now() });
     try {
@@ -84,27 +210,21 @@ export default function App() {
         dislikes: settings.dislikes ?? [],
         fast: settings.fast,
         replace: replaceId ? { avoidTitles: (results?.recipes ?? []).map((r) => r.title) } : undefined,
+        replaceId,
       };
-      const data = await api<RecipesResponse>('/api/recipes', {
+      const { job } = await api<{ job: JobInfo }>('/api/recipes', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
       });
-      let next = data;
-      if (replaceId && results && data.recipes[0]) {
-        // Nur das eine Rezept austauschen, Rest bleibt
-        const recipes = results.recipes.map((r) => (r.id === replaceId ? data.recipes[0] : r)).sort((a, b) => a.perPortion - b.perPortion);
-        next = { ...results, recipes };
-      }
-      setResults(next);
-      write('lastRecipes', next);
-      setGen((g) => ({ ...g, loading: false }));
+      const p = { id: job.id, replaceId };
+      savePending(p);
+      setPending(p);
     } catch (e) {
-      setGen((g) => ({ ...g, loading: false, error: e instanceof Error ? e.message : String(e), loginExpired: e instanceof LoginError }));
-    } finally {
       setReplacing(null);
+      setGen((g) => ({ ...g, loading: false, error: e instanceof Error ? e.message : String(e), loginExpired: e instanceof LoginError }));
     }
-  }, [ready, gen.loading, replacing, plz, activeChains, markets, settings, cart.cart, wishes, results]);
+  }, [ready, gen.loading, replacing, pending, plz, activeChains, markets, settings, cart.cart, wishes, results]);
 
   const toggleDislike = useCallback(
     (raw: string) => {
@@ -211,6 +331,8 @@ export default function App() {
             gen={gen}
             onGenerate={() => generate()}
             onReplace={(id) => generate(id)}
+            doneJobs={doneJobs}
+            onCollect={collectJob}
             replacing={replacing}
             saved={saved.saved}
             isSaved={saved.isSaved}

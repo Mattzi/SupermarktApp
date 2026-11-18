@@ -139,6 +139,8 @@ export interface RecipeRequest {
   fast?: boolean;
   /** Nur 1 Rezept als Ersatz bauen; diese Titel nicht wiederholen */
   replace?: { avoidTitles: string[] };
+  /** ID des Rezepts, das durch das Ergebnis ersetzt wird (nur für die App, damit Aufträge später richtig einsortiert werden) */
+  replaceId?: string;
 }
 
 export interface RecipeIngredient {
@@ -240,4 +242,17 @@ export interface ProspektStatus {
   }[];
   lastCheck: string | null;
   monthCostUsd: number;
+}
+
+/** Rezept-Auftrag: wird auf dem Server abgearbeitet, das Ergebnis bleibt zum Abholen liegen */
+export type JobStatus = 'queued' | 'running' | 'done' | 'failed';
+export interface JobInfo {
+  id: string;
+  status: JobStatus;
+  createdAt: string;
+  finishedAt?: string;
+  error?: string;
+  /** Nur ein Rezept austauschen (ID des alten Rezepts) */
+  replaceId?: string;
+  recipeCount?: number;
 }

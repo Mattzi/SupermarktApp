@@ -5,7 +5,9 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
-import { handle, runCron, type Env } from './index';
+import { handle, runCron, runRecipeJob, type Env } from './index';
+import { memoryJobs, pgJobs, type JobStore } from './jobs';
+import { startWorkers, type Workers } from './queue';
 import { memoryKv, pgKv, type Kv } from './kv';
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -100,7 +102,16 @@ async function main() {
     console.warn('DATABASE_URL fehlt – Daten liegen nur im Arbeitsspeicher');
     kv = memoryKv();
   }
-  const env: Env = { ...(process.env as Record<string, string>), CACHE: kv };
+  let jobs: JobStore;
+  if (process.env.DATABASE_URL) jobs = await pgJobs(process.env.DATABASE_URL);
+  else jobs = memoryJobs();
+  const env: Env = { ...(process.env as Record<string, string>), CACHE: kv, JOBS: jobs };
+
+  // Aufträge, die beim letzten Neustart mitten in der Arbeit hingen, wieder einreihen
+  const requeued = await jobs.requeueStale(10, 2).catch(() => 0);
+  if (requeued) console.log(`${requeued} hängende Rezept-Aufträge wieder eingereiht`);
+  const workers: Workers = startWorkers(jobs, (job) => runRecipeJob(env, job), Math.max(1, Number(env.RECIPE_WORKERS ?? 10)));
+  env.WAKE = workers.kick;
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
@@ -128,6 +139,8 @@ async function main() {
       console.log((await runCron(env)).join('\n'));
       const n = await cleanup();
       if (n) console.log(`${n} abgelaufene Einträge gelöscht`);
+      const old = await jobs.cleanup(Math.max(1, Number(env.RECIPE_JOB_DAYS ?? 14)));
+      if (old) console.log(`${old} alte Rezept-Aufträge gelöscht`);
     } catch (e) {
       console.error('Zeitplan', e);
     } finally {
@@ -138,6 +151,7 @@ async function main() {
   setInterval(tick, CRON_MS);
 
   const stop = () => {
+    workers.stop();
     server.close();
     process.exit(0);
   };

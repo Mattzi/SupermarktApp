@@ -19,6 +19,22 @@ Browser ──HTTPS──▶ Traefik ──Forward Auth──▶ Authentik (auth
 2. Im infra-Repo in `components/supermarktapp/kustomization.yaml` unter `images:` den neuen Commit eintragen, pushen.
    ArgoCD rollt die neue Version innerhalb von ~3 Minuten aus.
 
+## Rezepte im Hintergrund (Warteschlange)
+
+„Rezepte bauen“ legt nur einen Auftrag in der Tabelle `recipe_jobs` (Postgres) an. Ein Worker-Pool im Server
+(`worker/queue.ts`, `worker/jobs.ts`) arbeitet die Aufträge ab, auch wenn die App längst zu ist. Die App merkt sich
+die Auftrags-ID, fragt alle 3 Sekunden nach und holt das fertige Ergebnis ab (sofort oder erst nach Tagen;
+es gibt auch eine Liste „Fertig zum Abholen“). Auch „Rezept tauschen“ ist ein Auftrag.
+
+| Einstellung (optional) | Standard | Bedeutung |
+| --- | --- | --- |
+| `RECIPE_WORKERS` | 10 | so viele Aufträge laufen gleichzeitig |
+| `RECIPE_JOBS_PER_USER` | 2 | offene Aufträge je Konto |
+| `RECIPE_JOB_DAYS` | 14 | so lange liegen fertige Aufträge zum Abholen bereit |
+
+Nach einem Neustart werden hängende Aufträge wieder eingereiht (höchstens 2 Versuche). Das KI-Tagesbudget je Konto
+wird beim Anlegen geprüft, das Monatsbudget auch beim Abarbeiten.
+
 ## www.edeka.de über Tailscale
 
 www.edeka.de blockt Rechenzentren, auch den OVH-Server (geprüft 2026-11-18: 403 über beide IPv4-Adressen

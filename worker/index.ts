@@ -1,4 +1,6 @@
 // API unter /api/*. Die statischen Dateien und der Zeitplan kommen aus server.ts.
+import type { Job, JobStore } from './jobs';
+import type { JobInfo } from '../shared/types';
 import { fetchBestLeaflet, fetchRawOffers, leafletPage } from './marktguru';
 import { normalizeAll } from './normalize';
 import { generateRecipes } from './recipes';
@@ -35,6 +37,16 @@ import type { ChainInfo, Leaflet, LeafletsResponse, Offer, OffersResponse, Recip
 
 export interface Env {
   CACHE?: Kv;
+  /** Warteschlange für Rezept-Aufträge (Postgres, im Test/ohne Datenbank im Speicher) */
+  JOBS?: JobStore;
+  /** Weckt die Worker nach einem neuen Auftrag */
+  WAKE?: () => void;
+  /** So lange bleiben fertige Rezept-Aufträge zum Abholen liegen (Tage, Standard 14) */
+  RECIPE_JOB_DAYS?: string;
+  /** Wie viele Rezept-Aufträge gleichzeitig laufen dürfen (Standard 10) */
+  RECIPE_WORKERS?: string;
+  /** Wie viele offene Aufträge ein Konto gleichzeitig haben darf (Standard 2) */
+  RECIPE_JOBS_PER_USER?: string;
   /** Öffentliche Adresse der App, z. B. https://app.mattis-kraemer.de */
   APP_URL?: string;
   OPENROUTER_API_KEY?: string;
@@ -571,6 +583,22 @@ const error = (message: string, status = 500) => json({ error: message }, status
 const validPlz = (p: string | null | undefined): p is string => !!p && /^\d{5}$/.test(p);
 const parseIds = (s: string | null) => [...new Set((s ?? '').split(',').map(Number).filter((n) => Number.isFinite(n) && n > 0))].slice(0, 6);
 
+const jobInfo = ({ userId, request, result, ...i }: Job): JobInfo => ({ ...i, recipeCount: result?.recipes?.length });
+
+/** Wird von den Workern aufgerufen: baut die Rezepte für einen Auftrag und legt das Ergebnis ab */
+export async function runRecipeJob(env: Env, job: Job): Promise<void> {
+  const jobs = env.JOBS;
+  if (!jobs) return;
+  try {
+    if (await overBudget(env)) throw new Error(`Das KI-Budget von ${budget(env)} $ für diesen Monat ist aufgebraucht. Ab dem 1. geht es weiter.`);
+    const data = await getOffers(env, job.request.plz, (job.request.markets ?? []).slice(0, 6));
+    const res = await generateRecipes(job.request, data.offers, env, (usd) => addCost(env.CACHE, usd, job.userId));
+    await jobs.finish(job.id, res);
+  } catch (e) {
+    await jobs.fail(job.id, e instanceof Error ? e.message : String(e));
+  }
+}
+
 export async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith('/api/')) return error('Unbekannter Pfad', 404);
@@ -800,8 +828,31 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       if (await userOverBudget(env, user)) {
         return error(`Dein KI-Budget von ${userBudget(env, user).toFixed(2)} $ für heute ist aufgebraucht. Morgen geht es weiter.`, 429);
       }
-      const data = await getOffers(env, body.plz, (body.markets ?? []).slice(0, 6));
-      return json(await generateRecipes(body, data.offers, env, tracker(env, user)));
+      if (!env.JOBS) return error('Die Warteschlange für Rezepte ist nicht eingerichtet.', 500);
+      const maxOpen = Number(env.RECIPE_JOBS_PER_USER ?? 2);
+      if ((await env.JOBS.openCount(user.id)) >= maxOpen) {
+        return error('Es laufen schon Rezepte für dich. Warte, bis sie fertig sind, und hol sie dann ab.', 429);
+      }
+      const replaceId = typeof body.replaceId === 'string' ? body.replaceId.slice(0, 80) : undefined;
+      const job = await env.JOBS.enqueue(user.id, body, replaceId);
+      env.WAKE?.();
+      return json({ job: jobInfo(job) }, 202);
+    }
+
+    if (url.pathname === '/api/recipes/jobs' && request.method === 'GET') {
+      return json({ jobs: env.JOBS ? await env.JOBS.list(user.id) : [] });
+    }
+    const jobMatch = url.pathname.match(/^\/api\/recipes\/jobs\/([0-9a-fA-F-]{36})$/);
+    if (jobMatch && env.JOBS) {
+      if (request.method === 'GET') {
+        const job = await env.JOBS.get(user.id, jobMatch[1]);
+        if (!job) return error('Auftrag nicht gefunden (vielleicht schon abgeholt oder abgelaufen).', 404);
+        return json({ job: jobInfo(job), result: job.status === 'done' ? job.result : undefined });
+      }
+      if (request.method === 'DELETE') {
+        await env.JOBS.remove(user.id, jobMatch[1]);
+        return json({ ok: true });
+      }
     }
 
     // Prospekt eines Markts sofort einlesen (sonst macht das der Cron alle 30 Minuten)
