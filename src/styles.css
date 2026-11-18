@@ -1649,3 +1649,20 @@ body {
 .switch-desc::before {
   content: ' · ';
 }
+
+/* Die Statusleiste der Home-Bildschirm-App ist durchsichtig mit weißer Schrift (black-translucent).
+   Auf hellem Grund bekommt sie einen dezenten dunklen Verlauf, damit Uhrzeit und Akku lesbar bleiben.
+   In Safari ist der Abstand oben 0, dann ist der Verlauf unsichtbar. */
+@media (prefers-color-scheme: light) {
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: env(safe-area-inset-top);
+    background: linear-gradient(rgba(0, 0, 0, 0.32), rgba(0, 0, 0, 0));
+    z-index: 60;
+    pointer-events: none;
+  }
+}
