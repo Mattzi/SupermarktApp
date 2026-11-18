@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JobInfo, Leaflet, Recipe, RecipeRequest, RecipesResponse } from '../shared/types';
 import { api, loadLastRecipes, LoginError, useCart, useOffers, useSavedRecipes, useSettings, useShoppingList, useStores, useSyncReload, useTrip, write } from './store';
 import { shortChain } from './format';
+import { applyDesign } from './design';
 import { CookView, type GenState } from './views/Cook';
 import { ShoppingView } from './views/Shopping';
 import { SettingsView } from './views/Settings';
@@ -34,10 +35,21 @@ function savePending(p: PendingJob | null) {
   }
 }
 
+const TAB_TITLES: Record<string, string> = { kochen: 'Kochen', angebote: 'Angebote', einkauf: 'Einkauf', maerkte: 'Märkte', einstellungen: 'Einstellungen' };
+
 type Tab = 'kochen' | 'angebote' | 'einkauf' | 'maerkte' | 'einstellungen';
 
 export default function App() {
   const [settings, updateSettings] = useSettings();
+  useEffect(() => applyDesign(settings.design), [settings.design]);
+  // Apple-Look: Kopfleiste zeigt den Titel erst, wenn der große Titel weggescrollt ist
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const on = () => setScrolled(window.scrollY > 44);
+    on();
+    window.addEventListener('scroll', on, { passive: true });
+    return () => window.removeEventListener('scroll', on);
+  }, []);
   const [trip, setTrip] = useTrip();
   const [tab, setTab] = useState<Tab>(() => (settings.plz && settings.chains.length ? 'kochen' : 'maerkte'));
 
@@ -282,9 +294,12 @@ export default function App() {
   return (
     <ListContext.Provider value={listActions}>
     <div className="app">
-      <header className="topbar">
+      <header className={`topbar ${scrolled ? 'scrolled' : ''}`}>
         <div className="topbar-row">
-          <h1 className="brand">Angebotsküche</h1>
+          <p className="brand">Angebotsküche</p>
+          <span className="nav-title" aria-hidden="true">
+            {TAB_TITLES[tab]}
+          </span>
           {plz && (
             <button className="plz-pill" onClick={() => setTab('maerkte')} aria-label="Märkte und PLZ ändern">
               {trip ? 'Unterwegs' : 'Zuhause'} · {plz}
@@ -321,6 +336,8 @@ export default function App() {
           </div>
         )}
       </header>
+
+      <h1 className="large-title">{TAB_TITLES[tab]}</h1>
 
       <main className="content">
         {tab === 'kochen' && (
@@ -388,7 +405,7 @@ export default function App() {
             goToCook={() => setTab('kochen')}
           />
         )}
-        {tab === 'einstellungen' && <SettingsView settings={settings} markets={markets} onToggleDislike={toggleDislike} />}
+        {tab === 'einstellungen' && <SettingsView settings={settings} updateSettings={updateSettings} markets={markets} onToggleDislike={toggleDislike} />}
         {tab === 'maerkte' && (
           <MarketsView
             settings={settings}

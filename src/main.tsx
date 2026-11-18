@@ -2,6 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import './styles.css';
+import './apple.css';
+import { applyDesign, storedDesign } from './design';
 import { registerSW } from 'virtual:pwa-register';
 import { startSync } from './sync';
 
@@ -18,6 +20,7 @@ const updateSW = registerSW({
   },
 });
 
+applyDesign(storedDesign());
 startSync();
 
 createRoot(document.getElementById('root')!).render(

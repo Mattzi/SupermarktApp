@@ -21,6 +21,8 @@ export interface Settings {
   fast: boolean;
   /** Pro Rezept nur ein Laden (aus: Märkte werden gemischt) */
   singleStore?: boolean;
+  /** Aussehen der App: klassisch (grün) oder Apple-Look (System-Theme) */
+  design?: 'klassisch' | 'apple';
 }
 
 /** Vorübergehende Auswahl unterwegs */

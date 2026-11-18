@@ -1,0 +1,491 @@
+/* Apple-Look. Gilt nur mit <html data-design="apple"> (Einstellungen → Aussehen).
+   Orientiert sich an den Apple Human Interface Guidelines: Systemschrift, Systemfarben, große Titel,
+   gruppierte Flächen, Glas-Leisten (Material), weiche Rundungen, federnde Animationen.
+   Folgt automatisch dem hellen/dunklen Modus des Geräts. */
+
+html[data-design='apple'] {
+  /* Systemfarben (hell) */
+  --bg: #f2f2f7;
+  --surface: #ffffff;
+  --ink: #000000;
+  --muted: #6c6c70;
+  --line: rgba(60, 60, 67, 0.16);
+  --basil: #248a3d; /* Akzent: Apple-Grün, dunkel genug für Text auf Weiß */
+  --basil-soft: rgba(36, 138, 61, 0.12);
+  --tag: #ffcc00;
+  --tag-ink: #000000;
+  --tomato: #d70015;
+  --focus: #007aff;
+  --fill: rgba(120, 120, 128, 0.12); /* Fläche für Eingabefelder, Chips, Segmente */
+  --fill-strong: rgba(120, 120, 128, 0.2);
+  --on-accent: #ffffff;
+  --switch-on: #34c759;
+  --glass: rgba(249, 249, 249, 0.74);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.05);
+  --shadow-float: 0 8px 32px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.08);
+  --display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --r-sm: 12px;
+  --r-md: 20px;
+  --spring: cubic-bezier(0.32, 0.72, 0, 1);
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-design='apple'] {
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --ink: #ffffff;
+    --muted: #98989f;
+    --line: rgba(84, 84, 88, 0.5);
+    --basil: #30d158;
+    --basil-soft: rgba(48, 209, 88, 0.16);
+    --tag: #ffd60a;
+    --tomato: #ff453a;
+    --focus: #0a84ff;
+    --fill: rgba(120, 120, 128, 0.24);
+    --fill-strong: rgba(120, 120, 128, 0.36);
+    --on-accent: #000000;
+    --switch-on: #30d158;
+    --glass: rgba(28, 28, 30, 0.72);
+    --shadow: none;
+    --shadow-float: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html[data-design='apple'] {
+    --glass: var(--surface);
+  }
+}
+
+/* ---------- Grundlagen ---------- */
+html[data-design='apple'],
+html[data-design='apple'] body {
+  font-size: 17px;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.012em;
+}
+html[data-design='apple'] .muted {
+  color: var(--muted);
+}
+
+/* ---------- Kopfleiste: Glas, Titel erscheint beim Scrollen ---------- */
+html[data-design='apple'] .topbar {
+  background: var(--glass);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+  color: var(--ink);
+  padding: calc(6px + env(safe-area-inset-top)) 16px 8px;
+  border-bottom: 0.5px solid transparent;
+  transition: border-color 0.25s var(--spring);
+}
+html[data-design='apple'] .topbar.scrolled {
+  border-bottom-color: var(--line);
+}
+html[data-design='apple'] .brand {
+  display: none;
+}
+html[data-design='apple'] .nav-title {
+  display: block;
+  flex: 1;
+  font-weight: 600;
+  font-size: 1.05rem;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.25s var(--spring), transform 0.25s var(--spring);
+  pointer-events: none;
+}
+html[data-design='apple'] .topbar.scrolled .nav-title {
+  opacity: 1;
+  transform: none;
+}
+html[data-design='apple'] .topbar-row .plz-pill {
+  margin-left: auto;
+  background: var(--basil-soft);
+  color: var(--basil);
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 6px 12px;
+}
+html[data-design='apple'] .gear {
+  color: var(--basil);
+}
+html[data-design='apple'] .gear.on {
+  background: var(--basil-soft);
+}
+
+/* Märkte-Filter in der Leiste: gefüllte Kapseln */
+html[data-design='apple'] .chain-chip {
+  border: 0;
+  background: var(--fill);
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 500;
+  transition: background 0.2s var(--spring), color 0.2s var(--spring), transform 0.15s var(--spring);
+}
+html[data-design='apple'] .chain-chip.on {
+  background: var(--basil);
+  color: var(--on-accent);
+}
+html[data-design='apple'] .chain-chip.trip-end {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--basil);
+  color: var(--basil);
+}
+
+/* Großer Titel */
+html[data-design='apple'] .large-title {
+  display: block;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 6px 20px 12px;
+  font-family: var(--display);
+  font-size: 2.1rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+/* Der Einstellungs-Titel steht schon groß oben */
+html[data-design='apple'] .title-dup {
+  display: none;
+}
+
+/* ---------- Abschnittstitel, Karten, Listen ---------- */
+html[data-design='apple'] .section-title {
+  font-family: var(--display);
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  padding: 10px 20px 10px;
+}
+html[data-design='apple'] .card {
+  border: 0;
+  border-radius: var(--r-md);
+  padding: 18px;
+  margin: 0 16px 16px;
+  box-shadow: var(--shadow);
+}
+html[data-design='apple'] .card h2,
+html[data-design='apple'] .cart-head h2 {
+  font-family: var(--display);
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+html[data-design='apple'] .cart {
+  margin: 4px 16px 16px;
+  padding: 16px;
+  border: 0;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow), inset 0 0 0 1.5px var(--basil-soft);
+}
+html[data-design='apple'] .empty h2 {
+  font-size: 1.8rem;
+  letter-spacing: -0.03em;
+}
+html[data-design='apple'] .filters {
+  padding: 4px 16px 20px;
+}
+
+/* Rezeptkarten */
+html[data-design='apple'] .recipe-list {
+  padding: 0 16px;
+  gap: 12px;
+}
+html[data-design='apple'] .recipe-card {
+  border: 0;
+  border-radius: var(--r-md);
+  padding: 16px;
+  box-shadow: var(--shadow);
+  transition: transform 0.25s var(--spring);
+}
+html[data-design='apple'] .recipe-card:active {
+  background: var(--surface);
+  transform: scale(0.98);
+}
+
+/* Trennlinien dünn wie bei iOS */
+html[data-design='apple'] .offer {
+  border-bottom-width: 0.5px;
+}
+html[data-design='apple'] .offer img {
+  border-radius: 10px;
+}
+
+/* ---------- Buttons ---------- */
+html[data-design='apple'] .primary,
+html[data-design='apple'] .secondary {
+  min-height: 50px;
+  border-radius: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  transition: transform 0.2s var(--spring), opacity 0.2s var(--spring);
+}
+html[data-design='apple'] .primary {
+  background: var(--basil);
+  color: var(--on-accent);
+}
+html[data-design='apple'] .primary.big {
+  min-height: 56px;
+  border-radius: 16px;
+  font-size: 1.05rem;
+}
+html[data-design='apple'] .secondary {
+  background: var(--basil-soft);
+  color: var(--basil);
+}
+html[data-design='apple'] .primary:active,
+html[data-design='apple'] .secondary:active,
+html[data-design='apple'] .chip:active,
+html[data-design='apple'] .chain-chip:active,
+html[data-design='apple'] .cart-bar:active,
+html[data-design='apple'] .icon-btn:active {
+  transform: scale(0.97);
+  opacity: 0.88;
+}
+html[data-design='apple'] .link {
+  text-decoration: none;
+  font-weight: 500;
+}
+html[data-design='apple'] .focus {
+  border-radius: 14px;
+}
+
+/* ---------- Chips ---------- */
+html[data-design='apple'] .chip {
+  border: 0;
+  background: var(--fill);
+  color: var(--ink);
+  padding: 7px 14px;
+  font-weight: 500;
+  transition: background 0.2s var(--spring), color 0.2s var(--spring), transform 0.15s var(--spring);
+}
+html[data-design='apple'] .chip.on {
+  background: var(--basil);
+  color: var(--on-accent);
+}
+html[data-design='apple'] .chip.on.dislike {
+  background: var(--tomato);
+  color: #fff;
+}
+html[data-design='apple'] .combo {
+  border: 0;
+  background: var(--basil-soft);
+}
+
+/* ---------- Segmented Control (iOS) ---------- */
+html[data-design='apple'] .segmented {
+  border: 0;
+  background: var(--fill);
+  border-radius: 10px;
+  padding: 2px;
+  gap: 2px;
+  overflow: visible;
+}
+html[data-design='apple'] .segmented button {
+  border-left: 0;
+  border-radius: 8px;
+  font-weight: 500;
+  padding: 8px 2px;
+  transition: background 0.25s var(--spring), box-shadow 0.25s var(--spring);
+}
+html[data-design='apple'] .segmented button.on {
+  background: #fff;
+  color: #000;
+  font-weight: 600;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12), 0 3px 1px rgba(0, 0, 0, 0.04);
+}
+@media (prefers-color-scheme: dark) {
+  html[data-design='apple'] .segmented button.on {
+    background: #636366;
+    color: #fff;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* Stepper und Eingabefelder */
+html[data-design='apple'] .stepper-ctrl {
+  border: 0;
+  background: var(--fill);
+  border-radius: 12px;
+}
+html[data-design='apple'] .plz-row input,
+html[data-design='apple'] .search-row input,
+html[data-design='apple'] .watch-add input,
+html[data-design='apple'] .wishes input,
+html[data-design='apple'] .wishes textarea,
+html[data-design='apple'] input[type='text'],
+html[data-design='apple'] input[type='search'],
+html[data-design='apple'] input:not([type]) {
+  border: 0;
+  background: var(--fill);
+  border-radius: 12px;
+}
+html[data-design='apple'] input::placeholder {
+  color: var(--muted);
+}
+
+/* ---------- Schalter wie bei iOS ---------- */
+html[data-design='apple'] .switch-row input[type='checkbox'] {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 51px;
+  height: 31px;
+  margin: 0;
+  border-radius: 31px;
+  background: var(--fill-strong);
+  transition: background 0.3s var(--spring);
+}
+html[data-design='apple'] .switch-row input[type='checkbox']::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15), 0 1px 1px rgba(0, 0, 0, 0.16);
+  transition: transform 0.3s var(--spring);
+}
+html[data-design='apple'] .switch-row input[type='checkbox']:checked {
+  background: var(--switch-on);
+}
+html[data-design='apple'] .switch-row input[type='checkbox']:checked::after {
+  transform: translateX(20px);
+}
+html[data-design='apple'] .switch-row {
+  align-items: center;
+  gap: 12px;
+}
+
+/* ---------- Untere Leiste: schwebendes Glas ---------- */
+html[data-design='apple'] .app {
+  padding-bottom: calc(100px + env(safe-area-inset-bottom));
+}
+html[data-design='apple'] .tabbar {
+  left: 16px;
+  right: 16px;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 6px;
+  border: 0;
+  border-radius: 34px;
+  background: var(--glass);
+  -webkit-backdrop-filter: saturate(180%) blur(28px);
+  backdrop-filter: saturate(180%) blur(28px);
+  box-shadow: var(--shadow-float);
+  gap: 2px;
+}
+html[data-design='apple'] .tab {
+  padding: 7px 0 6px;
+  border-radius: 28px;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--muted);
+  transition: background 0.3s var(--spring), color 0.3s var(--spring), transform 0.2s var(--spring);
+}
+html[data-design='apple'] .tab svg {
+  width: 24px;
+  height: 24px;
+  stroke-width: 1.7;
+}
+html[data-design='apple'] .tab.active {
+  color: var(--basil);
+  background: var(--fill);
+}
+html[data-design='apple'] .tab.active svg {
+  stroke-width: 2;
+}
+html[data-design='apple'] .tab:active {
+  transform: scale(0.94);
+}
+/* Korb-Leiste über der Tab-Leiste */
+html[data-design='apple'] .cart-bar {
+  left: 16px;
+  right: 16px;
+  bottom: calc(86px + env(safe-area-inset-bottom));
+  border-radius: 20px;
+  box-shadow: var(--shadow-float);
+  transition: transform 0.2s var(--spring);
+}
+
+/* ---------- Detailansicht: wie ein Sheet von unten ---------- */
+html[data-design='apple'] .detail {
+  animation: apple-sheet 0.45s var(--spring) both;
+}
+html[data-design='apple'] .detail-top {
+  background: var(--glass);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+}
+html[data-design='apple'] .detail-top::before {
+  content: '';
+  display: block;
+  width: 36px;
+  height: 5px;
+  margin: 2px auto 4px;
+  border-radius: 3px;
+  background: var(--fill-strong);
+}
+html[data-design='apple'] .back {
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+html[data-design='apple'] .detail-head h1 {
+  font-size: 2rem;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+/* ---------- Bewegung ---------- */
+@keyframes apple-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes apple-sheet {
+  from {
+    opacity: 0;
+    transform: translateY(28px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+html[data-design='apple'] .content > * {
+  animation: apple-rise 0.4s var(--spring) both;
+}
+html[data-design='apple'] .recipe-list > li {
+  animation: apple-rise 0.5s var(--spring) both;
+}
+html[data-design='apple'] .recipe-list > li:nth-child(2) {
+  animation-delay: 0.05s;
+}
+html[data-design='apple'] .recipe-list > li:nth-child(3) {
+  animation-delay: 0.1s;
+}
+html[data-design='apple'] .recipe-list > li:nth-child(4) {
+  animation-delay: 0.15s;
+}
+html[data-design='apple'] .recipe-list > li:nth-child(n + 5) {
+  animation-delay: 0.2s;
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-design='apple'] *,
+  html[data-design='apple'] *::before,
+  html[data-design='apple'] *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

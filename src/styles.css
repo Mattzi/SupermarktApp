@@ -1635,3 +1635,12 @@ html,
 body {
   overflow-x: hidden;
 }
+
+/* Elemente nur für den Apple-Look */
+.brand {
+  margin: 0;
+}
+.large-title,
+.nav-title {
+  display: none;
+}
