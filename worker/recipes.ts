@@ -335,7 +335,7 @@ export async function generateRecipes(req: RecipeRequest, allOffers: Offer[], en
         { role: 'user', content: user },
       ],
       TOOL.input_schema,
-      16000,
+      100000,
     );
     costUsd = res.costUsd;
     raws = res.data.recipes ?? [];
