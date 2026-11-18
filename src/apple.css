@@ -10,8 +10,9 @@ html[data-design='apple'] {
   --ink: #000000;
   --muted: #6c6c70;
   --line: rgba(60, 60, 67, 0.16);
-  --basil: #248a3d; /* Akzent: Apple-Grün, dunkel genug für Text auf Weiß */
-  --basil-soft: rgba(36, 138, 61, 0.12);
+  --basil: #2d7a50; /* ruhiges Grün, Text auf Weiß gut lesbar */
+  --basil-soft: rgba(45, 122, 80, 0.11);
+  --tomato-soft: rgba(215, 0, 21, 0.1);
   --tag: #ffcc00;
   --tag-ink: #000000;
   --tomato: #d70015;
@@ -20,7 +21,7 @@ html[data-design='apple'] {
   --fill-strong: rgba(120, 120, 128, 0.2);
   --on-accent: #ffffff;
   --switch-on: #34c759;
-  --glass: rgba(249, 249, 249, 0.74);
+  --glass: rgba(249, 249, 249, 0.86);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.05);
   --shadow-float: 0 8px 32px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.08);
   --display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
@@ -38,16 +39,17 @@ html[data-design='apple'] {
     --ink: #ffffff;
     --muted: #98989f;
     --line: rgba(84, 84, 88, 0.5);
-    --basil: #30d158;
-    --basil-soft: rgba(48, 209, 88, 0.16);
+    --basil: #5cba87;
+    --basil-soft: rgba(98, 194, 140, 0.16);
+    --tomato-soft: rgba(255, 69, 58, 0.18);
     --tag: #ffd60a;
     --tomato: #ff453a;
     --focus: #0a84ff;
     --fill: rgba(120, 120, 128, 0.24);
     --fill-strong: rgba(120, 120, 128, 0.36);
-    --on-accent: #000000;
+    --on-accent: #04170c;
     --switch-on: #30d158;
-    --glass: rgba(28, 28, 30, 0.72);
+    --glass: rgba(28, 28, 30, 0.84);
     --shadow: none;
     --shadow-float: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
   }
@@ -79,6 +81,11 @@ html[data-design='apple'] .topbar {
   padding: calc(6px + env(safe-area-inset-top)) 16px 8px;
   border-bottom: 0.5px solid transparent;
   transition: border-color 0.25s var(--spring);
+}
+html[data-design='apple'] .topbar:not(.scrolled) {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 html[data-design='apple'] .topbar.scrolled {
   border-bottom-color: var(--line);
@@ -125,8 +132,9 @@ html[data-design='apple'] .chain-chip {
   transition: background 0.2s var(--spring), color 0.2s var(--spring), transform 0.15s var(--spring);
 }
 html[data-design='apple'] .chain-chip.on {
-  background: var(--basil);
-  color: var(--on-accent);
+  background: var(--basil-soft);
+  color: var(--basil);
+  font-weight: 600;
 }
 html[data-design='apple'] .chain-chip.trip-end {
   background: transparent;
@@ -188,21 +196,105 @@ html[data-design='apple'] .filters {
   padding: 4px 16px 20px;
 }
 
-/* Rezeptkarten */
+/* Rezeptkarten: Karte und Aktionszeile sind eine gemeinsame, weiche Fläche */
 html[data-design='apple'] .recipe-list {
   padding: 0 16px;
-  gap: 12px;
+  gap: 14px;
+}
+html[data-design='apple'] .recipe-item {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  overflow: hidden;
 }
 html[data-design='apple'] .recipe-card {
   border: 0;
-  border-radius: var(--r-md);
-  padding: 16px;
-  box-shadow: var(--shadow);
-  transition: transform 0.25s var(--spring);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 16px 16px 12px;
+  transition: background 0.2s var(--spring);
+}
+html[data-design='apple'] .recipe-item .recipe-card {
+  border-radius: 0;
 }
 html[data-design='apple'] .recipe-card:active {
-  background: var(--surface);
-  transform: scale(0.98);
+  background: var(--fill);
+  transform: none;
+}
+html[data-design='apple'] .recipe-actions {
+  border-top: 0.5px solid var(--line);
+}
+html[data-design='apple'] .list-toggle {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-weight: 500;
+  font-size: 0.85rem;
+  padding: 11px 4px;
+  transition: background 0.2s var(--spring);
+}
+html[data-design='apple'] .list-toggle:active {
+  background: var(--fill);
+}
+html[data-design='apple'] .list-toggle.on {
+  background: transparent;
+  font-weight: 600;
+}
+html[data-design='apple'] .recipe-actions .list-toggle + .list-toggle {
+  border-left: 0.5px solid var(--line);
+}
+html[data-design='apple'] .recipe-meta {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* Preisschild: ruhig, weich abgerundet statt Etikett mit Spitze */
+html[data-design='apple'] .price-tag {
+  clip-path: none;
+  border-radius: 12px;
+  padding: 6px 10px;
+  background: rgba(255, 204, 0, 0.26);
+  color: var(--ink);
+}
+html[data-design='apple'] .price-tag.lg {
+  padding: 8px 14px;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-design='apple'] .price-tag {
+    background: rgba(255, 214, 10, 0.14);
+    color: #ffd60a;
+  }
+}
+
+/* Häkchen: runde Kreise wie bei iOS (die Schalter oben sind ausgenommen) */
+html[data-design='apple'] input[type='checkbox']:not(.switch-row > input) {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--fill-strong);
+  background: transparent;
+  transition: background 0.2s var(--spring), border-color 0.2s var(--spring);
+}
+html[data-design='apple'] input[type='checkbox']:not(.switch-row > input):checked {
+  background: var(--basil);
+  border-color: var(--basil);
+}
+html[data-design='apple'] input[type='checkbox']:not(.switch-row > input):checked::after {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 3px;
+  width: 6px;
+  height: 11px;
+  border: solid var(--on-accent);
+  border-width: 0 2.2px 2.2px 0;
+  transform: rotate(45deg);
 }
 
 /* Trennlinien dünn wie bei iOS */
@@ -262,12 +354,13 @@ html[data-design='apple'] .chip {
   transition: background 0.2s var(--spring), color 0.2s var(--spring), transform 0.15s var(--spring);
 }
 html[data-design='apple'] .chip.on {
-  background: var(--basil);
-  color: var(--on-accent);
+  background: var(--basil-soft);
+  color: var(--basil);
+  font-weight: 600;
 }
 html[data-design='apple'] .chip.on.dislike {
-  background: var(--tomato);
-  color: #fff;
+  background: var(--tomato-soft);
+  color: var(--tomato);
 }
 html[data-design='apple'] .combo {
   border: 0;
@@ -358,58 +451,81 @@ html[data-design='apple'] .switch-row input[type='checkbox']:checked::after {
   transform: translateX(20px);
 }
 html[data-design='apple'] .switch-row {
+  flex-direction: row-reverse;
+  justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+html[data-design='apple'] .switch-row > span {
+  flex: 1;
+  min-width: 0;
+}
+html[data-design='apple'] .switch-desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+html[data-design='apple'] .switch-desc::before {
+  content: none;
 }
 
-/* ---------- Untere Leiste: schwebendes Glas ---------- */
+/* ---------- Untere Leiste: fest am unteren Rand (Home-Indikator-Abstand eingerechnet) ---------- */
 html[data-design='apple'] .app {
-  padding-bottom: calc(100px + env(safe-area-inset-bottom));
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 html[data-design='apple'] .tabbar {
-  left: 16px;
-  right: 16px;
-  bottom: calc(10px + env(safe-area-inset-bottom));
-  max-width: 440px;
-  margin: 0 auto;
-  padding: 6px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0 max(8px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(8px, env(safe-area-inset-left));
   border: 0;
-  border-radius: 34px;
+  border-top: 0.5px solid var(--line);
+  border-radius: 0;
   background: var(--glass);
-  -webkit-backdrop-filter: saturate(180%) blur(28px);
-  backdrop-filter: saturate(180%) blur(28px);
-  box-shadow: var(--shadow-float);
-  gap: 2px;
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+  box-shadow: none;
+  gap: 0;
 }
 html[data-design='apple'] .tab {
-  padding: 7px 0 6px;
-  border-radius: 28px;
-  font-size: 0.68rem;
+  padding: 8px 0 6px;
+  border-radius: 0;
+  font-size: 0.66rem;
   font-weight: 500;
+  letter-spacing: 0;
   color: var(--muted);
-  transition: background 0.3s var(--spring), color 0.3s var(--spring), transform 0.2s var(--spring);
+  transition: color 0.25s var(--spring), transform 0.2s var(--spring);
 }
 html[data-design='apple'] .tab svg {
-  width: 24px;
-  height: 24px;
+  width: 25px;
+  height: 25px;
   stroke-width: 1.7;
 }
 html[data-design='apple'] .tab.active {
   color: var(--basil);
-  background: var(--fill);
+  background: none;
 }
 html[data-design='apple'] .tab.active svg {
-  stroke-width: 2;
+  stroke-width: 2.1;
 }
 html[data-design='apple'] .tab:active {
-  transform: scale(0.94);
+  transform: scale(0.92);
 }
 /* Korb-Leiste über der Tab-Leiste */
 html[data-design='apple'] .cart-bar {
-  left: 16px;
-  right: 16px;
-  bottom: calc(86px + env(safe-area-inset-bottom));
-  border-radius: 20px;
+  left: 12px;
+  right: 12px;
+  bottom: calc(62px + env(safe-area-inset-bottom));
+  border-radius: 18px;
   box-shadow: var(--shadow-float);
   transition: transform 0.2s var(--spring);
 }
@@ -488,4 +604,8 @@ html[data-design='apple'] .recipe-list > li:nth-child(n + 5) {
     animation: none !important;
     transition: none !important;
   }
+}
+
+html[data-design='apple'] .error {
+  font-weight: 500;
 }

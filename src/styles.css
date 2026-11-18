@@ -1644,3 +1644,6 @@ body {
 .nav-title {
   display: none;
 }
+.switch-desc::before {
+  content: ' · ';
+}

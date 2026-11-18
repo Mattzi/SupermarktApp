@@ -241,7 +241,7 @@ export function CookView(p: Props) {
             <input type="checkbox" checked={!!s.fast} onChange={(e) => set({ fast: e.target.checked })} />
             <span>
               <strong>Schnell-Modus</strong>
-              <span className="muted small"> · ca. 15 Sekunden, etwa ein Zehntel der Kosten, etwas einfachere Rezepte</span>
+              <span className="muted small switch-desc">ca. 15 Sekunden, etwa ein Zehntel der Kosten, etwas einfachere Rezepte</span>
             </span>
           </label>
         )}
@@ -250,7 +250,7 @@ export function CookView(p: Props) {
             <input type="checkbox" checked={!!s.singleStore} onChange={(e) => set({ singleStore: e.target.checked })} />
             <span>
               <strong>Pro Rezept nur ein Laden</strong>
-              <span className="muted small"> · aus: Angebote aus allen gewählten Märkten werden gemischt (mehr Angebote je Rezept). An: jedes Rezept nur aus einem Markt, dafür weniger Wege.</span>
+              <span className="muted small switch-desc">Aus: Angebote aller gewählten Märkte werden gemischt. An: jedes Rezept nur aus einem Markt.</span>
             </span>
           </label>
         )}
