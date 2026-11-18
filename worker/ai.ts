@@ -29,6 +29,8 @@ export async function askJson<T>(
   messages: Message[],
   schema: Record<string, unknown>,
   maxTokens: number,
+  /** Wie lange das Modell nachdenken darf (Denk-Tokens zählen zu max_tokens). Leer = Standard des Modells. */
+  reasoningEffort?: 'low' | 'medium' | 'high',
 ): Promise<AiResult<T>> {
   if (!cfg.apiKey) throw new Error('Der OpenRouter-Schlüssel fehlt (OPENROUTER_API_KEY).');
   if (!model) throw new Error('Kein KI-Modell eingestellt.');
@@ -44,6 +46,7 @@ export async function askJson<T>(
       model,
       messages,
       max_tokens: maxTokens,
+      ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
       response_format: { type: 'json_schema', json_schema: { name: 'antwort', strict: true, schema } },
       // Nur Anbieter nehmen, die das JSON-Schema auch wirklich einhalten
       provider: { require_parameters: true },
