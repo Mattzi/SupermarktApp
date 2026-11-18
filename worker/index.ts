@@ -15,6 +15,7 @@ import {
   withCurrentImages,
   proxyImage,
   searchMarkets,
+  H,
   type EdekaMarket,
   type Prospekt,
 } from './edeka';
@@ -150,10 +151,41 @@ async function edekaOffers(env: Env, m: EdekaMarket, force = false): Promise<{ o
 type Watched = EdekaMarket & { lastSeen: number };
 const WATCH_DAYS = 14;
 
-async function watchMarket(env: Env, m: EdekaMarket) {
+/**
+ * Markt-Nummer (für /maerkte/<nr>/ auf edeka.de: GLN und Prospekt). nah & gut und NP haben sie in ihrer Adresse,
+ * normale EDEKA-Märkte (/eh/<region>/<markt>/index.jsp) nicht – auf ihrer Seite steht aber ein Link /maerkte/<nr>/.
+ */
+async function withMarketNo(env: Env, m: EdekaMarket): Promise<EdekaMarket> {
+  if (m.marketNo) return m;
+  const known = await kvGet<string>(env, `edeka:no:${m.id}`);
+  if (known) return { ...m, marketNo: known };
+  try {
+    let url = m.url;
+    if (!url) {
+      // Früher gespeicherte Märkte haben keine Adresse: über Straße und Ort neu suchen
+      const found = await searchMarkets(`${m.street} ${m.city}`).catch(() => [] as EdekaMarket[]);
+      url = found.find((x) => x.id === m.id)?.url;
+    }
+    if (!url?.startsWith('https://www.edeka.de/')) return m;
+    const res = await edekaFetch(url, { headers: H });
+    if (!res.ok) return m;
+    const no = (await res.text()).match(/\/maerkte\/(\d+)\//)?.[1];
+    if (!no) return m;
+    await kvPut(env, `edeka:no:${m.id}`, no, 180 * 86400);
+    console.log(`${m.name}: Markt-Nummer ${no}`);
+    return { ...m, marketNo: no };
+  } catch (e) {
+    console.error(`${m.name}: Markt-Nummer nicht gefunden`, e);
+    return m;
+  }
+}
+
+async function watchMarket(env: Env, market: EdekaMarket): Promise<EdekaMarket> {
+  const m = await withMarketNo(env, market);
   const list = (await kvGet<Watched[]>(env, 'edeka:watch')) ?? [];
   const hit = list.find((x) => x.id === m.id);
-  if (hit && Date.now() - (hit.lastSeen ?? 0) < 86400_000) return; // höchstens einmal am Tag schreiben
+  // höchstens einmal am Tag schreiben (außer die Markt-Nummer ist neu)
+  if (hit && (hit.marketNo || !m.marketNo) && Date.now() - (hit.lastSeen ?? 0) < 86400_000) return m;
   const next = [...list.filter((x) => x.id !== m.id), { ...m, lastSeen: Date.now() }];
   await kvPut(env, 'edeka:watch', next);
   // GLN und Blätterkatalog-Adresse fehlen noch? Dann im Hintergrund von edeka.de holen
@@ -162,6 +194,7 @@ async function watchMarket(env: Env, m: EdekaMarket) {
     await requestMarketData(kv, m.marketNo);
     void runJobs(kv).catch((e) => console.error('edeka.de-Abruf', e));
   }
+  return m;
 }
 
 const centerOf = (env: Env, plz: string) => cached(env, `geo:${plz}`, 90 * 24 * HOUR, () => geocode(plz));
@@ -254,9 +287,9 @@ export async function getOffers(env: Env, plz: string, marketIds: number[] = [],
   const markets = (await Promise.all(marketIds.map((id) => marketById(env, id)))).filter((m): m is EdekaMarket => !!m);
   const edeka = await Promise.all(
     markets.map(async (m) => {
-      await watchMarket(env, m);
-      const r = await settle(m.name, edekaOffers(env, m, force), { offers: [] as Offer[] });
-      return { m, ...r };
+      const mm = await watchMarket(env, m);
+      const r = await settle(mm.name, edekaOffers(env, mm, force), { offers: [] as Offer[] });
+      return { m: mm, ...r };
     }),
   );
 
@@ -424,8 +457,9 @@ async function prospekteOf(env: Env, m: EdekaMarket): Promise<Prospekt[]> {
   }
 }
 
-async function processMarket(env: Env, m: EdekaMarket, maxExtract = 1, user?: User): Promise<string[]> {
+async function processMarket(env: Env, market: EdekaMarket, maxExtract = 1, user?: User): Promise<string[]> {
   const log: string[] = [];
+  const m = await withMarketNo(env, market);
   if (!env.OPENROUTER_API_KEY || !env.EXTRACT_MODEL || !env.CACHE) return ['OpenRouter-Schlüssel, Modell (EXTRACT_MODEL) oder Datenbank fehlt'];
   // Erst klären, ob die App-Schnittstelle den Markt schon vollständig kennt – dann braucht es keine KI
   const gln = await getGln(env.CACHE, m.marketNo);
@@ -785,8 +819,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const tick = setInterval(() => void w.write(enc.encode('.')), 10_000);
       (async () => {
         try {
-          await watchMarket(env, m);
-          const log = await processMarket(env, m, 2, user);
+          const log = await processMarket(env, await watchMarket(env, m), 2, user);
           await w.write(enc.encode('\n' + JSON.stringify({ log })));
         } catch (e) {
           await w.write(enc.encode('\n' + JSON.stringify({ error: String(e) })));

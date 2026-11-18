@@ -21,6 +21,8 @@ const ID_BASE = 2_000_000_000_000;
 export interface EdekaMarket {
   id: number;
   marketNo: string;
+  /** Seite des Markts auf edeka.de (bei EDEKA-Märkten /eh/…, ohne Markt-Nummer) */
+  url?: string;
   name: string;
   street: string;
   city: string;
@@ -48,6 +50,7 @@ export function parseMarkets(raw: unknown): EdekaMarket[] {
     .map((m: any) => ({
       id: Number(m?.id),
       marketNo: str(m?.url, 300).match(/maerkte\/(\d+)/)?.[1] ?? '',
+      url: str(m?.url, 300) || undefined,
       name: str(m?.name),
       street: str(m?.contact?.address?.street),
       city: str(m?.contact?.address?.city?.name),
