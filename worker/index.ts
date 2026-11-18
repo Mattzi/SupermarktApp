@@ -728,6 +728,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
         hasCache: !!env.CACHE,
         model: env.RECIPE_MODEL ?? null,
         extractModel: env.EXTRACT_MODEL ?? null,
+        fastModel: env.RECIPE_MODEL_FAST || null,
         monthCostUsd: Math.round((await monthCost(env.CACHE)) * 100) / 100,
         budgetUsd: budget(env),
         userCostToday: Math.round((await dayCost(env.CACHE, user.id)) * 1000) / 1000,

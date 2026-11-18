@@ -320,7 +320,9 @@ export async function generateRecipes(req: RecipeRequest, allOffers: Offer[], en
   const ids = cartIds(r);
   const cart = ids.map((id) => allOffers.find((o) => o.id === id)).filter((o): o is Offer => !!o);
   const { system, user } = buildPrompt(r, offers, cart);
-  const model = (r.fast ? env.RECIPE_MODEL_FAST : '') || env.RECIPE_MODEL || '';
+  // Schnell-Modus nur, wenn ein eigenes Modell dafür gesetzt ist (sonst wäre es dasselbe Modell)
+  const fast = !!r.fast && !!env.RECIPE_MODEL_FAST;
+  const model = (fast ? env.RECIPE_MODEL_FAST : '') || env.RECIPE_MODEL || '';
 
   let raws: RawRecipe[] = [];
   let costUsd = 0;
@@ -354,7 +356,7 @@ export async function generateRecipes(req: RecipeRequest, allOffers: Offer[], en
   return {
     recipes,
     model,
-    fast: !!r.fast,
+    fast,
     offerCount: offers.length,
     createdAt: new Date().toISOString(),
     costUsd,

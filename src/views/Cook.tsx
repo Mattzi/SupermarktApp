@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { DietChoice, Offer, Recipe, RecipesResponse } from '../../shared/types';
-import type { Settings } from '../store';
+import { api, type Settings } from '../store';
 import { DIET_LABEL, DIET_SHORT, euro, shortChain, validity } from '../format';
 import { expiry } from '../shopping';
 import { PriceTag } from './PriceTag';
@@ -60,6 +60,14 @@ export function CookView(p: Props) {
   const elapsed = useElapsed(gen.loading, gen.startedAt);
 
   const [showSaved, setShowSaved] = useState(false);
+  // Schnell-Modus nur anbieten, wenn auf dem Server ein eigenes Modell dafür gesetzt ist (RECIPE_MODEL_FAST)
+  const [hasFast, setHasFast] = useState(false);
+  useEffect(() => {
+    api<{ fastModel?: string | null }>('/api/health')
+      .then((h) => setHasFast(!!h.fastModel))
+      .catch(() => setHasFast(false));
+  }, []);
+  const fast = hasFast && !!s.fast;
 
   if (!p.ready) {
     return (
@@ -225,13 +233,15 @@ export function CookView(p: Props) {
           maxLength={200}
         />
 
-        <label className="switch-row">
-          <input type="checkbox" checked={!!s.fast} onChange={(e) => set({ fast: e.target.checked })} />
-          <span>
-            <strong>Schnell-Modus</strong>
-            <span className="muted small"> · ca. 15 Sekunden, etwa ein Zehntel der Kosten, etwas einfachere Rezepte</span>
-          </span>
-        </label>
+        {hasFast && (
+          <label className="switch-row">
+            <input type="checkbox" checked={!!s.fast} onChange={(e) => set({ fast: e.target.checked })} />
+            <span>
+              <strong>Schnell-Modus</strong>
+              <span className="muted small"> · ca. 15 Sekunden, etwa ein Zehntel der Kosten, etwas einfachere Rezepte</span>
+            </span>
+          </label>
+        )}
         {(s.dislikes?.length ?? 0) > 0 && <p className="muted small dislike-note">Ohne: {s.dislikes.join(', ')}</p>}
 
         <button className="primary big" onClick={p.onGenerate} disabled={gen.loading || p.activeChains.length === 0}>
@@ -241,7 +251,7 @@ export function CookView(p: Props) {
         </button>
         {gen.loading && (
           <p className="loading-note" role="status">
-            Die KI sucht die passenden Angebote und rechnet die Preise aus. Das dauert {s.fast ? 'etwa 10–20' : 'meist 30–70'} Sekunden. ({elapsed} s)
+            Die KI sucht die passenden Angebote und rechnet die Preise aus. Das dauert {fast ? 'etwa 10–20' : 'meist 30–70'} Sekunden. ({elapsed} s)
           </p>
         )}
         {p.activeChains.length === 0 && <p className="warn">Wähle oben mindestens einen Markt aus.</p>}
