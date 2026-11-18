@@ -3,5 +3,4 @@ dist
 dist-server
 .git
 deploy
-relay
 *.log

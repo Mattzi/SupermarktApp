@@ -1,4 +1,4 @@
-// Node-Server (läuft im k3s-Cluster, Repo Mattzi/infra): liefert die App aus dist/ aus, leitet /api/* und /relay/*
+// Node-Server (läuft im k3s-Cluster, Repo Mattzi/infra): liefert die App aus dist/ aus, leitet /api/*
 // an die API weiter und startet alle 30 Minuten den Zeitplan (Prospekte einlesen, Wochen-Push).
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createReadStream } from 'node:fs';
@@ -105,7 +105,7 @@ async function main() {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
     try {
-      if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/relay/')) {
+      if (url.pathname.startsWith('/api/')) {
         await sendResponse(res, await handle(toRequest(req, url), env));
       } else if (req.method === 'GET' || req.method === 'HEAD') {
         await serveStatic(req, res, url.pathname);

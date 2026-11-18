@@ -51,10 +51,10 @@ eq(d1.deals.find((d) => d.offerId === 2)?.reasons, ['20 % günstiger als sonst']
 eq(d1.deals.find((d) => d.offerId === 3)?.reasons, ['seit 4 Wochen nicht im Angebot'], 'selten');
 eq(isoWeek(new Date('2026-10-16T12:00:00Z')), '2026-W42', 'kw');
 
-// EDEKA: GLN und Blätterkatalog aus den Seiten von edeka.de, Relay, App-Schnittstelle
+// EDEKA: GLN und Blätterkatalog aus den Seiten von edeka.de, Warteschlange, App-Schnittstelle
 import { glnFromHtml, catalogPathsFromHtml } from '../worker/edeka';
 import { berlin, fetchMobileOffers } from '../worker/edeka-mobile';
-import { completeJob, leaseJobs, requestMarketData, getGln, katKey } from '../worker/relay';
+import { completeJob, leaseJobs, requestMarketData, getGln, katKey, runJobs } from '../worker/edeka-pages';
 import { memoryKv } from '../worker/kv';
 const marktSeite = 'data-tracking-event="[&quot;select_market&quot;,{&quot;market_name&quot;:&quot;nah &amp; gut von EDEKA Durasin&quot;,&quot;market_gln&quot;:&quot;4313590115808&quot;}]"';
 eq(glnFromHtml(marktSeite), '4313590115808', 'gln aus marktseite');
@@ -73,15 +73,30 @@ void (async () => {
   await requestMarketData(kv, '801116');
   await requestMarketData(kv, '801116');
   const jobs = await leaseJobs(kv);
-  eq(jobs.map((j) => j.url), ['https://www.edeka.de/maerkte/801116/', 'https://www.edeka.de/maerkte/801116/prospekte/'], 'relay auftraege');
-  eq((await leaseJobs(kv)).length, 0, 'relay reserviert');
+  eq(jobs.map((j) => j.url), ['https://www.edeka.de/maerkte/801116/', 'https://www.edeka.de/maerkte/801116/prospekte/'], 'edeka auftraege');
+  eq((await leaseJobs(kv)).length, 0, 'edeka reserviert');
   await completeJob(kv, 'markt-801116', 200, marktSeite);
   await completeJob(kv, 'prospekte-801116', 200, 'https://blaetterkatalog.edeka.de/MINDEN/8011165/index.html');
-  eq([await getGln(kv, '801116'), await kv.get(katKey('801116'), 'json')], ['4313590115808', ['MINDEN/8011165']], 'relay ergebnisse');
+  eq([await getGln(kv, '801116'), await kv.get(katKey('801116'), 'json')], ['4313590115808', ['MINDEN/8011165']], 'edeka ergebnisse');
   await requestMarketData(kv, '801116');
-  eq((await leaseJobs(kv)).length, 0, 'relay nichts mehr offen');
+  eq((await leaseJobs(kv)).length, 0, 'edeka nichts mehr offen');
 
   const realFetch = globalThis.fetch;
+  // runJobs holt die Seiten selbst (ohne EDEKA_PROXY direkt per fetch)
+  const kv2 = memoryKv();
+  await requestMarketData(kv2, '801116');
+  let calls = 0;
+  globalThis.fetch = (async (u: string) => {
+    calls++;
+    return String(u).endsWith('/prospekte/')
+      ? new Response('https://blaetterkatalog.edeka.de/MINDEN/8011165/index.html')
+      : new Response('Access Denied', { status: 403 });
+  }) as typeof fetch;
+  await runJobs(kv2);
+  eq([calls, await getGln(kv2, '801116'), await kv2.get(katKey('801116'), 'json')], [2, null, ['MINDEN/8011165']], 'runJobs teilweise');
+  eq((await leaseJobs(kv2)).length, 0, 'fehlgeschlagener auftrag wartet');
+  globalThis.fetch = realFetch;
+
   globalThis.fetch = (async (u: string) => {
     const url = String(u);
     if (url.includes('openid-connect/token')) return new Response(JSON.stringify({ access_token: 't', expires_in: 360 }));

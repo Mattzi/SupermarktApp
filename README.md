@@ -7,7 +7,7 @@ Rezepte aus den aktuellen Supermarkt-Angeboten, sortiert nach Preis pro Portion.
   - `GET /api/offers?plz=38536&markets=…` – Lebensmittel-Angebote (marktguru, ALDI, EDEKA-App-Schnittstelle bzw. EDEKA-Prospekt per KI)
   - `POST /api/recipes` – Rezepte über OpenRouter
   - `GET /api/health` – Einstellungen und KI-Kosten
-  - `/relay/*` – Aufträge für das EDEKA-Relay zu Hause (`relay/`)
+- **www.edeka.de** blockt Rechenzentren: diese Abrufe laufen über einen Tailscale-Proxy (`EDEKA_PROXY`, `worker/edeka-fetch.ts`)
 - **Gemeinsame Typen:** `shared/types.ts`
 - **Betrieb:** im k3s-Cluster (Repo `Mattzi/infra`, Ordner `components/supermarktapp`), Image baut die GitHub Action, siehe [`deploy/README.md`](deploy/README.md)
 

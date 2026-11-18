@@ -1,4 +1,4 @@
-// API unter /api/* (und /relay/* für das EDEKA-Relay). Die statischen Dateien und der Zeitplan kommen aus server.ts.
+// API unter /api/*. Die statischen Dateien und der Zeitplan kommen aus server.ts.
 import { fetchBestLeaflet, fetchRawOffers, leafletPage } from './marktguru';
 import { normalizeAll } from './normalize';
 import { generateRecipes } from './recipes';
@@ -23,7 +23,8 @@ import type { Kv } from './kv';
 import { currentUser, syncKeyFor, type User } from './auth';
 import type { AiConfig } from './ai';
 import { fetchMobileOffers, type MobileResult } from './edeka-mobile';
-import { completeJob, getGln, katKey, leaseJobs, relayStatus, requestMarketData } from './relay';
+import { getGln, katKey, queueStatus, requestMarketData, runJobs } from './edeka-pages';
+import { edekaFetch, edekaProxy } from './edeka-fetch';
 import { geocode, km, nearestStores } from './stores';
 import { sendPush, vapidKeys, type PushSub } from './push';
 import { mergeDocs, type SyncDoc } from './sync';
@@ -49,7 +50,6 @@ export interface Env {
   EXTRACT_PER_WEEK?: string;
   AUTH_MODE?: string;
   DEV_USER_EMAIL?: string;
-  RELAY_TOKEN?: string;
   EDEKA_APP_CLIENT_ID?: string;
   EDEKA_APP_CLIENT_SECRET?: string;
 }
@@ -156,8 +156,12 @@ async function watchMarket(env: Env, m: EdekaMarket) {
   if (hit && Date.now() - (hit.lastSeen ?? 0) < 86400_000) return; // höchstens einmal am Tag schreiben
   const next = [...list.filter((x) => x.id !== m.id), { ...m, lastSeen: Date.now() }];
   await kvPut(env, 'edeka:watch', next);
-  // GLN und Blätterkatalog-Adresse fehlen noch? Dann beim Relay anfragen
-  if (env.CACHE) await requestMarketData(env.CACHE, m.marketNo);
+  // GLN und Blätterkatalog-Adresse fehlen noch? Dann im Hintergrund von edeka.de holen
+  if (env.CACHE) {
+    const kv = env.CACHE;
+    await requestMarketData(kv, m.marketNo);
+    void runJobs(kv).catch((e) => console.error('edeka.de-Abruf', e));
+  }
 }
 
 const centerOf = (env: Env, plz: string) => cached(env, `geo:${plz}`, 90 * 24 * HOUR, () => geocode(plz));
@@ -402,8 +406,8 @@ const errKey = (k: string) => `edeka:err:${EXTRACT_VERSION}:${k}`;
 const metaKey = (k: string) => `edeka:meta:${EXTRACT_VERSION}:${k}`;
 
 /**
- * Prospekte eines Markts finden: über die bekannte Blätterkatalog-Adresse (kommt vom Relay),
- * sonst direkt über edeka.de (klappt nur, wenn edeka.de den Server gerade nicht blockt).
+ * Prospekte eines Markts finden: über die bekannte Blätterkatalog-Adresse,
+ * sonst direkt über edeka.de (per Tailscale-Proxy, siehe edeka-fetch.ts).
  */
 async function prospekteOf(env: Env, m: EdekaMarket): Promise<Prospekt[]> {
   const known =
@@ -416,7 +420,7 @@ async function prospekteOf(env: Env, m: EdekaMarket): Promise<Prospekt[]> {
     return ps;
   } catch {
     if (env.CACHE) await requestMarketData(env.CACHE, m.marketNo);
-    throw new Error('Prospekt-Adresse wird über das Relay ermittelt');
+    throw new Error('Prospekt-Adresse wird von edeka.de geholt');
   }
 }
 
@@ -427,7 +431,7 @@ async function processMarket(env: Env, m: EdekaMarket, maxExtract = 1, user?: Us
   const gln = await getGln(env.CACHE, m.marketNo);
   if (!gln) {
     await requestMarketData(env.CACHE, m.marketNo);
-    return [`${m.name}: GLN noch unbekannt, wartet auf das Relay`];
+    return [`${m.name}: GLN noch unbekannt, wird von edeka.de geholt`];
   }
   if (gln !== 'none') {
     const mobile = await mobileOffers(env, m).catch(() => null);
@@ -498,6 +502,7 @@ export async function runCron(env: Env): Promise<string[]> {
   const log: string[] = [];
   await kvPut(env, 'cron:last', { at: new Date().toISOString(), markets: list.length });
   log.push(`Push: ${await weeklyPush(env).catch((e) => String(e))}`);
+  if (env.CACHE) log.push(...(await runJobs(env.CACHE, 20).catch((e) => [`edeka.de-Abruf: ${String(e)}`])));
   for (const m of list) {
     try {
       log.push(...(await processMarket(env, m)));
@@ -532,33 +537,8 @@ const error = (message: string, status = 500) => json({ error: message }, status
 const validPlz = (p: string | null | undefined): p is string => !!p && /^\d{5}$/.test(p);
 const parseIds = (s: string | null) => [...new Set((s ?? '').split(',').map(Number).filter((n) => Number.isFinite(n) && n > 0))].slice(0, 6);
 
-/** Vergleich, der nicht verrät, wie viele Zeichen stimmen */
-function sameSecret(a: string, b: string): boolean {
-  if (!a || !b || a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
-/** Aufträge für das EDEKA-Relay (nicht hinter Authentik, dafür mit eigenem Schlüssel) */
-async function handleRelay(request: Request, env: Env, url: URL): Promise<Response> {
-  const auth = request.headers.get('authorization') ?? '';
-  if (!env.RELAY_TOKEN || !sameSecret(auth.replace(/^Bearer\s+/i, ''), env.RELAY_TOKEN)) return error('nicht erlaubt', 401);
-  if (!env.CACHE) return error('Keine Datenbank verbunden', 500);
-  if (url.pathname === '/relay/jobs' && request.method === 'GET') return json({ jobs: await leaseJobs(env.CACHE) });
-  if (url.pathname === '/relay/result' && request.method === 'POST') {
-    const b = (await request.json().catch(() => null)) as { id?: string; status?: number; body?: string } | null;
-    if (!b?.id || typeof b.status !== 'number') return error('Ergebnis unvollständig', 400);
-    const note = await completeJob(env.CACHE, b.id, b.status, String(b.body ?? '').slice(0, 3_000_000));
-    console.log(`Relay ${b.id}: ${note}`);
-    return json({ ok: true, note });
-  }
-  return error('Unbekannter Pfad', 404);
-}
-
 export async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  if (url.pathname.startsWith('/relay/')) return handleRelay(request, env, url);
   if (!url.pathname.startsWith('/api/')) return error('Unbekannter Pfad', 404);
 
   try {
@@ -675,7 +655,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
           mobile && typeof mobile === 'object'
             ? { national: mobile.national, count: mobile.offers.length, categories: mobile.categories, sample: mobile.offers.slice(0, 10).map((o) => `${o.name} | ${o.price} | ${o.group}`) }
             : mobile,
-        relay: env.CACHE ? await relayStatus(env.CACHE) : null,
+        edekaSeiten: env.CACHE ? await queueStatus(env.CACHE) : null,
         watch,
         extractsThisWeek: Number(week ?? 0),
         idx,
@@ -713,14 +693,14 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       for (const [name, headers] of Object.entries(variants)) {
         for (const u of urls) {
           try {
-            const r = await fetch(u, { headers });
+            const r = u.startsWith('https://www.edeka.de/') ? await edekaFetch(u, { headers }) : await fetch(u, { headers });
             out[`${name} ${u}`] = `${r.status} ${r.headers.get('content-type') ?? ''} ${r.headers.get('server') ?? ''}`;
           } catch (e) {
             out[`${name} ${u}`] = String(e);
           }
         }
       }
-      return json(out);
+      return json({ edekaProxy: edekaProxy ? 'www.edeka.de läuft über den Tailscale-Proxy' : 'kein Proxy (EDEKA_PROXY leer)', ...out });
     }
 
     // Abgleich zwischen Geräten (je angemeldetem Konto)

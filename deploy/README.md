@@ -9,9 +9,8 @@ Browser ──HTTPS──▶ Traefik ──Forward Auth──▶ Authentik (auth
                      │
                      └──▶ App (Node, dieses Repo) ──▶ Postgres (gemeinsame CloudNativePG-Instanz)
                             │  ├──▶ EDEKA-App-Schnittstelle, Blätterkatalog, marktguru, ALDI, OpenStreetMap
-                            │  └──▶ OpenRouter (KI)
-                            ▲
-Relay zu Hause ──/relay/*──┘   (holt Seiten von www.edeka.de: GLN und Prospekt-Adresse je Markt)
+                            │  ├──▶ OpenRouter (KI)
+                            │  └──▶ Tailscale-Container im selben Pod ──▶ Exit Node „jetson“ zu Hause ──▶ www.edeka.de
 ```
 
 ## Neue Version ausrollen
@@ -20,23 +19,23 @@ Relay zu Hause ──/relay/*──┘   (holt Seiten von www.edeka.de: GLN und 
 2. Im infra-Repo in `components/supermarktapp/kustomization.yaml` unter `images:` den neuen Commit eintragen, pushen.
    ArgoCD rollt die neue Version innerhalb von ~3 Minuten aus.
 
-## Relay zu Hause
+## www.edeka.de über Tailscale
 
 www.edeka.de blockt Rechenzentren, auch den OVH-Server (geprüft 2026-11-18: 403 über beide IPv4-Adressen
-und IPv6). Das Relay holt diese Seiten über deinen Heimanschluss. Es baut nur ausgehende Verbindungen auf,
-du musst also keine Ports freigeben, und es lädt nur Seiten unter `https://www.edeka.de/maerkte/`.
+und IPv6). Im Pod läuft deshalb ein Tailscale-Container (userspace, ohne Sonderrechte). Er bietet auf
+`127.0.0.1:1055` einen HTTP-Proxy an, der über den Exit Node `jetson` rausgeht. Die App nutzt ihn nur für
+www.edeka.de (`EDEKA_PROXY`, `worker/edeka-fetch.ts`), alles andere geht direkt raus.
 
-Auf dem Gerät zu Hause (Pi, NAS, PC mit Docker), im Ordner `relay/`:
-```bash
-RELAY_TOKEN=<Passwort aus dem Tresor-Eintrag "supermarktapp"> docker compose up -d --build
-```
-Kontrolle: `https://app.mattis-kraemer.de/api/debug/edeka?market=<Markt-ID>` zeigt unter `relay.lastSeen`,
-wann sich das Relay zuletzt gemeldet hat, und unter `gln` das Ergebnis.
+- Auth-Key: Tresor-Eintrag `supermarktapp` (Passwort). Wiederverwendbar + ephemeral, Tag `tag:supermarktapp`;
+  die Tailscale-ACL muss dem Tag `autogroup:internet` über den Exit Node erlauben.
+- Kontrolle: `https://app.mattis-kraemer.de/api/debug/sources` (www.edeka.de sollte 200 liefern) und
+  `/api/debug/edeka?market=<Markt-ID>` (`edekaSeiten.lastRun`, `gln`).
+- Ist `jetson` aus, schlagen die Abrufe fehl und werden alle 30 Minuten wiederholt (höchstens 5 Versuche pro Seite).
 
 ### Ablauf je Markt
 
-1. Jemand wählt den Markt in der App aus → der Server legt Relay-Aufträge an (GLN, Prospekt-Adresse).
-2. Das Relay liefert die Seiten → GLN und Blätterkatalog-Adresse werden gespeichert.
+1. Jemand wählt den Markt in der App aus → der Server holt im Hintergrund die Marktseite und die Prospektseite.
+2. GLN und Blätterkatalog-Adresse werden gespeichert.
 3. Der Zeitplan (alle 30 Minuten) prüft die App-Schnittstelle:
    - **eigener Prospekt** (`national=false`) → fertig, keine KI.
    - **nur bundesweit** → der Prospekt wird einmal pro Woche per KI aus den Seitenbildern gelesen
@@ -65,7 +64,7 @@ Ohne Attribut gilt `DAILY_USER_BUDGET_USD`. Prüfen: In der App unter Märkte �
 kubectl -n supermarktapp exec deploy/supermarktapp -- \
   node dist-server/compare.mjs MINDEN/8011165 deepseek/deepseek-v4.1-flash <gemini-flash-modell> > vergleich.html
 ```
-`MINDEN/8011165` ist die Blätterkatalog-Adresse eines Markts (steht nach dem Relay unter `/api/debug/edeka`).
+`MINDEN/8011165` ist die Blätterkatalog-Adresse eines Markts (steht unter `/api/debug/edeka`).
 Das bessere Modell dann im infra-Repo als `EXTRACT_MODEL` eintragen (`components/supermarktapp/deployment.yaml`).
 
 ## Prüfen, was vom Server aus erreichbar ist

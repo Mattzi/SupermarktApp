@@ -127,7 +127,7 @@ export default defineConfig({
         importScripts: ['push-sw.js'],
         clientsClaim: true,
         cleanupOutdatedCaches: true,
-        navigateFallbackDenylist: [/^\/api\//, /^\/relay\//, /^\/outpost\.goauthentik\.io\//, /^\/version\.json/],
+        navigateFallbackDenylist: [/^\/api\//, /^\/outpost\.goauthentik\.io\//, /^\/version\.json/],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.hostname === 'cdn.marktguru.de' || url.pathname.startsWith('/api/img'),

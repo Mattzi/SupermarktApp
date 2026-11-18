@@ -7,9 +7,10 @@ import { dietFor, guessGroup } from './aldi';
 import type { Tracker } from './costs';
 import { askJson, costOf, type AiConfig, type Part } from './ai';
 import { IMAGE_UA } from './edeka-mobile';
+import { edekaFetch } from './edeka-fetch';
 
 // edeka.de lässt nur Anfragen mit vollständigen Browser-Kopfzeilen durch
-const H = {
+export const H = {
   'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36',
   accept: 'text/html,application/json;q=0.9,*/*;q=0.8',
   'accept-language': 'de-DE,de;q=0.9,en;q=0.8',
@@ -31,7 +32,7 @@ export interface EdekaMarket {
 }
 
 export async function searchMarkets(plz: string): Promise<EdekaMarket[]> {
-  const res = await fetch(`https://www.edeka.de/api/marketsearch/markets?searchstring=${encodeURIComponent(plz)}`, { headers: H });
+  const res = await edekaFetch(`https://www.edeka.de/api/marketsearch/markets?searchstring=${encodeURIComponent(plz)}`, { headers: H });
   if (!res.ok) throw new Error(`EDEKA-Marktsuche antwortet mit ${res.status}`);
   const d = (await res.json()) as { markets?: any[] };
   return parseMarkets(d.markets);
@@ -64,7 +65,7 @@ export function marketChainInfo(m: EdekaMarket, count = 0, note?: string): Chain
 
 /** Bundesweite Online-Angebote eines Markts (meist nur 10–30 Stück) */
 export async function fetchMarketOffers(m: EdekaMarket, now = Date.now()): Promise<Offer[]> {
-  const res = await fetch(`https://www.edeka.de/eh/service/eh/offers?marketId=${m.id}&limit=999`, { headers: H });
+  const res = await edekaFetch(`https://www.edeka.de/eh/service/eh/offers?marketId=${m.id}&limit=999`, { headers: H });
   if (!res.ok) throw new Error(`EDEKA-Angebote antworten mit ${res.status}`);
   const d = (await res.json()) as { docs?: any[]; gueltig_von?: number; gueltig_bis?: number };
   const from = d.gueltig_von ? new Date(d.gueltig_von).toISOString() : new Date(now).toISOString();
@@ -126,7 +127,7 @@ export interface Prospekt {
 
 /** Findet den aktuellen und (falls schon online) den nächsten Prospekt eines Markts */
 export async function findProspekte(m: EdekaMarket): Promise<Prospekt[]> {
-  const res = await fetch(`https://www.edeka.de/maerkte/${m.marketNo}/prospekte/`, { headers: H });
+  const res = await edekaFetch(`https://www.edeka.de/maerkte/${m.marketNo}/prospekte/`, { headers: H });
   if (!res.ok) throw new Error(`EDEKA-Prospektseite antwortet mit ${res.status}`);
   return probeProspekte(catalogPathsFromHtml(await res.text()));
 }
