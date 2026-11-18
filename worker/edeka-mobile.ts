@@ -105,6 +105,11 @@ function categoryGroup(cat: string): Group | null | undefined {
   return undefined;
 }
 
+/** Keine Lebensmittel (kommen in der Obst-&-Gemüse-Kategorie der App vor) */
+const NON_FOOD = /(weihnachtsstern|christrose|amaryllis|handbund|nordmann|nobilis|tanne\b|blume|strauß|orchidee|pflanze|adventskranz|gesteck|kerze|primel|hyazinthe|tulpe)/i;
+/** Essbar, aber keine Zutat für Rezepte: Eis, Fertiggerichte, Süßes zum Frühstück, Getränkepulver … */
+const NOT_COOKING = /(ice cream|eiscreme|eis\b|cremissimo|pizza|fertiggericht|fertig|schlemmerfilet|fischstäbchen|nesquik|müsli|cerealien|konfitüre|marmelade|nuss-nougat|nutella|brotaufstrich|popits|snack|dessert|mousse|pudding|buldak|meal to go|rosinen schnecke|soßenkuchen)/i;
+
 const COOKING = new Set<Group>(['fleisch', 'wurst', 'fisch', 'milch', 'gemuese', 'obst', 'vorrat', 'tiefkuehl', 'feinkost', 'brot']);
 // "Ab Donnerstag erhältlich:", "Donnerstag bis Samstag:", "Samstags-Knüller:" …
 const AVAIL = /^\*?\s*((?:ab\s+)?(?:montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)[^:]{0,40}|[^:]{0,20}knüller):\s*/i;
@@ -121,7 +126,9 @@ function toOffer(m: EdekaMarket, o: RawMobileOffer, r: RawMobileResponse, now: n
   if (fromCat === null) return null;
   // Kategorie nur als Rückfall: "Fleisch & Wurst" soll Hackfleisch nicht zur Wurst machen
   const text = `${name} ${desc}`;
-  const group = guessGroup(text, fromCat ?? 'vorrat');
+  if (NON_FOOD.test(name)) return null;
+  // Nur der Titel entscheidet über die Gruppe: Beschreibungen enthalten Zufallswörter ("Eis", "Saft" …), die Gulasch zum Getränk machen
+  const group = guessGroup(name, fromCat ?? 'vorrat');
   const basic = parseBasic(desc);
   const from = o.validFrom || r.validFrom;
   const till = o.validTill || r.validTill;
@@ -138,7 +145,7 @@ function toOffer(m: EdekaMarket, o: RawMobileOffer, r: RawMobileResponse, now: n
     group,
     category: cat,
     diet: dietFor(group, name, text),
-    cooking: COOKING.has(group),
+    cooking: COOKING.has(group) && !NOT_COOKING.test(name),
     multi: /versch\.|oder /i.test(text),
     validFrom: from ? berlin(from, '00:00:00') : new Date(now).toISOString(),
     validTo: till ? berlin(till, '23:59:59') : new Date(now + 2 * 86400_000).toISOString(),
