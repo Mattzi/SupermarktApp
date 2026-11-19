@@ -44,8 +44,18 @@ export default function App() {
   useEffect(() => applyDesign(settings.design), [settings.design]);
   // Apple-Look: Kopfleiste zeigt den Titel erst, wenn der große Titel weggescrollt ist
   const [scrolled, setScrolled] = useState(false);
+  // Apple-Look (iOS 26): Tab-Leiste schrumpft beim Runterscrollen auf den aktiven Tab, beim Hochscrollen klappt sie auf
+  const [compactTabs, setCompactTabs] = useState(false);
   useEffect(() => {
-    const on = () => setScrolled(window.scrollY > 44);
+    let last = window.scrollY;
+    const on = () => {
+      const y = window.scrollY;
+      setScrolled(y > 44);
+      if (y < 80) setCompactTabs(false);
+      else if (y - last > 8) setCompactTabs(true);
+      else if (last - y > 8) setCompactTabs(false);
+      if (Math.abs(y - last) > 8 || y < 80) last = y;
+    };
     on();
     window.addEventListener('scroll', on, { passive: true });
     return () => window.removeEventListener('scroll', on);
@@ -436,7 +446,7 @@ export default function App() {
         </button>
       )}
 
-      <nav className="tabbar" aria-label="Bereiche">
+      <nav className={`tabbar ${compactTabs ? 'compact' : ''}`} aria-label="Bereiche" onClick={() => compactTabs && setCompactTabs(false)}>
         <TabButton id="kochen" tab={tab} setTab={setTab} label="Kochen" icon={<PotIcon />} />
         <TabButton id="angebote" tab={tab} setTab={setTab} label="Angebote" icon={<TagIcon />} />
         <TabButton
