@@ -34,7 +34,7 @@ export function snapshot(offers: Offer[]): WeekSnapshot {
 }
 
 const median = (xs: number[]) => {
-  const s = [...xs].sort((a, b) => a - b);
+  const s = xs.toSorted((a, b) => a - b);
   return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
 };
 

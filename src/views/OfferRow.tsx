@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Crop, Offer } from '../../shared/types';
 import { useListActions } from '../actions';
 import { euro, shortChain, validity } from '../format';
+import { Modal } from './Modal';
 
 /** Größere Variante eines Produktbilds (marktguru, ALDI, EDEKA) */
 export function largeImage(src: string): string {
@@ -91,16 +92,7 @@ export function OfferThumb({
         )}
       </button>
       {open && (
-        <div
-          className="img-zoom"
-          role="dialog"
-          aria-label={alt || 'Produktbild'}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setOpen(false);
-          }}
-        >
+        <Modal className="img-zoom" label={alt || 'Produktbild'} onClose={() => setOpen(false)} closeOnAnyClick>
           {src ? (
             <img
               src={largeImage(src)}
@@ -117,7 +109,7 @@ export function OfferThumb({
           )}
           {alt && <p>{alt}</p>}
           <span className="img-zoom-hint">Antippen zum Schließen</span>
-        </div>
+        </Modal>
       )}
     </>
   );

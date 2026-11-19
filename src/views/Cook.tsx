@@ -6,6 +6,9 @@ import { expiry } from '../shopping';
 import { PriceTag } from './PriceTag';
 import { OfferThumb } from './OfferRow';
 
+/** Ein-/Aus-Schalter: natives switch-Attribut (Safari), role=switch für die anderen Browser */
+const SWITCH = { switch: '', role: 'switch' } as Record<string, string>;
+
 const DIETS: DietChoice[] = ['alles', 'fleisch', 'fisch', 'vegetarisch', 'vegan'];
 const TIMES: (number | null)[] = [null, 20, 30, 45];
 
@@ -238,7 +241,7 @@ export function CookView(p: Props) {
 
         {hasFast && (
           <label className="switch-row">
-            <input type="checkbox" checked={!!s.fast} onChange={(e) => set({ fast: e.target.checked })} />
+            <input type="checkbox" {...SWITCH} checked={!!s.fast} onChange={(e) => set({ fast: e.target.checked })} />
             <span>
               <strong>Schnell-Modus</strong>
               <span className="muted small switch-desc">ca. 15 Sekunden, etwa ein Zehntel der Kosten, etwas einfachere Rezepte</span>
@@ -247,7 +250,7 @@ export function CookView(p: Props) {
         )}
         {p.activeChains.length > 1 && (
           <label className="switch-row">
-            <input type="checkbox" checked={!!s.singleStore} onChange={(e) => set({ singleStore: e.target.checked })} />
+            <input type="checkbox" {...SWITCH} checked={!!s.singleStore} onChange={(e) => set({ singleStore: e.target.checked })} />
             <span>
               <strong>Pro Rezept nur ein Laden</strong>
               <span className="muted small switch-desc">Aus: Angebote aller gewählten Märkte werden gemischt. An: jedes Rezept nur aus einem Markt.</span>

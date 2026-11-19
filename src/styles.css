@@ -44,7 +44,6 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--body);
-  font-size: 16px;
   line-height: 1.45;
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
@@ -1664,5 +1663,60 @@ body {
     background: linear-gradient(rgba(0, 0, 0, 0.32), rgba(0, 0, 0, 0));
     z-index: 60;
     pointer-events: none;
+  }
+}
+
+/* Kopf- und Tab-Leiste dürfen fokussierte Felder nicht verdecken (WCAG 2.4.11) */
+html {
+  scroll-padding-top: calc(env(safe-area-inset-top) + 104px);
+  scroll-padding-bottom: calc(80px + env(safe-area-inset-bottom));
+}
+
+/* Lange Angebotslisten: Zeilen außerhalb des Bildschirms erst zeichnen, wenn sie in die Nähe kommen */
+.offer:nth-child(n + 9) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 84px;
+}
+
+/* Native Schalter (Safari): nicht auf Häkchen-Größe zusammendrücken */
+.native-switch .switch-row input[switch] {
+  width: auto;
+  height: auto;
+  accent-color: var(--basil);
+}
+
+/* Lupen als echte <dialog>: Standard-Rahmen und -Größe des Browsers entfernen */
+dialog.zoom,
+dialog.img-zoom {
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  overscroll-behavior: contain;
+}
+dialog.zoom {
+  padding: 0;
+}
+dialog.zoom:not([open]),
+dialog.img-zoom:not([open]) {
+  display: none;
+}
+dialog.zoom::backdrop,
+dialog.img-zoom::backdrop {
+  background: transparent;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+/* Erzwungene Farben (Windows-Kontrastmodus): Auswahl nicht nur über Hintergrundfarbe zeigen */
+@media (forced-colors: active) {
+  .segmented button.on,
+  .chip.on,
+  .chain-chip.on,
+  .tab.active {
+    outline: 2px solid CanvasText;
+    outline-offset: -2px;
   }
 }

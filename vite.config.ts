@@ -110,6 +110,7 @@ export default defineConfig({
         short_name: 'Angebotsküche',
         description: 'Rezepte aus den aktuellen Supermarkt-Angeboten, sortiert nach Preis',
         lang: 'de',
+        id: '/',
         start_url: '/',
         display: 'standalone',
         orientation: 'portrait',

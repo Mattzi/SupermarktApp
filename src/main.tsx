@@ -21,6 +21,8 @@ const updateSW = registerSW({
 });
 
 applyDesign(storedDesign());
+// Safari kann echte iOS-Schalter (<input type=checkbox switch>); sonst zeichnet das CSS einen nach
+if ('switch' in HTMLInputElement.prototype) document.documentElement.classList.add('native-switch');
 startSync();
 
 createRoot(document.getElementById('root')!).render(

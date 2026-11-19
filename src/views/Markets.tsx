@@ -277,6 +277,7 @@ function ChainPicker(props: {
       >
         <input
           inputMode="numeric"
+          autoComplete="postal-code"
           pattern="\d{5}"
           maxLength={5}
           value={plz}

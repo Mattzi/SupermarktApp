@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { GROUP_LABELS, type Group, type Leaflet, type Offer } from '../../shared/types';
 import { shortChain } from '../format';
 import { OfferRow } from './OfferRow';
+import { Modal } from './Modal';
 
 const ORDER: Group[] = ['fleisch', 'fisch', 'gemuese', 'obst', 'milch', 'wurst', 'vorrat', 'tiefkuehl', 'feinkost', 'brot', 'fruehstueck', 'snacks', 'getraenke'];
 
@@ -91,14 +92,14 @@ export function LeafletView(props: { chain: string; leaflets: Leaflet[]; offers:
       )}
 
       {zoom && (
-        <div className="zoom" role="dialog" aria-label="Prospektseite" onClick={() => setZoom(null)}>
-          <button className="zoom-close" aria-label="Schließen">
+        <Modal className="zoom" label="Prospektseite" onClose={() => setZoom(null)}>
+          <button className="zoom-close" aria-label="Schließen" onClick={() => setZoom(null)}>
             ✕
           </button>
-          <div className="zoom-scroll" onClick={(e) => e.stopPropagation()}>
+          <div className="zoom-scroll">
             <img src={zoom} alt="Prospektseite groß" />
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

@@ -107,7 +107,7 @@ export function OffersView(p: Props) {
         />
       ) : (
         <>
-          <div className="search-row">
+          <div className="search-row" role="search">
             <input
               type="search"
               value={query}
